@@ -455,7 +455,16 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"[aineverforget] status error: {e}", file=sys.stderr)
         return 1
 
+    try:
+        from aineverforget.run_journal import recent_events, recent_runs
+        journal_events = recent_events(5)
+        journal_runs = recent_runs(3)
+    except Exception:
+        journal_events = []
+        journal_runs = []
+
     if args.json:
+        result["journal"] = {"recent_events": journal_events, "recent_runs": journal_runs}
         _json_out(result)
     else:
         print(f"Collection:    {result.get('collection')}")
@@ -466,6 +475,20 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"Documents:     {result.get('document_count')}")
         print(f"Sources:       {result.get('source_count')}")
         print(f"Last ingest:   {result.get('last_ingested_at')}")
+        if journal_runs:
+            print()
+            print("Recent runs:")
+            for r in journal_runs:
+                run_type = "ask" if r["event"] == "ASK_START" else "ingest"
+                ts = r["ts"][:19]
+                print(f"  {ts}  {run_type:<7}  dispatches={r['dispatches']}  id={r['run_id'][:8]}…")
+        if journal_events:
+            print()
+            print("Recent events (last 5):")
+            for e in journal_events:
+                ts = e["ts"][:19]
+                agent = f"  agent={e['agent']}" if e.get("agent") else ""
+                print(f"  {ts}  {e['event']:<20}{agent}")
     return 0
 
 

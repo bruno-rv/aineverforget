@@ -21,7 +21,7 @@ metadata:
     - "coverage_verdict must be 'partial' + non-null qualification when any sub-query is empty"
     - "Two-Strike rule: same failure retried twice → needs_user"
     - "no per-Ask hard cap; safeguards: preflight estimate + soft-warn + live telemetry"
-    - "journal/telemetry events are Phase E forward-refs (no-op until Phase E built)"
+    - "journal events call scripts/run_journal.py; run_id written to $_AINF_RUN_ID_FILE (mktemp) before STEP 0; ASK_START emitted after STEP 0 with ask_type"
     - "opus escalation on the reiterate path is a documented exception to global model rules (PLAN.md risk #6)"
 ---
 
@@ -43,9 +43,13 @@ Initialize at Ask start:
 - `dispatches_used` = 0
 - `failure_count_retriever` = 0 (reset per sub-query)
 - `failure_count_synthesizer` = 0
-- `cost_tally_tokens` = 0 (Phase E forward-ref)
+```bash
+_AINF_RUN_ID_FILE=$(mktemp /tmp/ainf_run_id_XXXXXX)
+python3 -c "import uuid; print(uuid.uuid4())" > "$_AINF_RUN_ID_FILE"
+```
 
-> JOURNAL [Phase E forward-ref]: `ASK_START` (question=<question>, run_id=<uuid>)
+> **SECURITY:** When substituting `<question>` into bash blocks, pass the value via env var or
+> temp file — never inline in the command string.
 
 ---
 
@@ -67,6 +71,10 @@ not a quality gate.
 **Hard rule:** Never use `scroll` to answer content questions ("how many times did I write X"). Never use `lexscan` to answer metadata questions ("which sources are tagged Y").
 
 Record `ask_type` as one of: `recall` | `synthesis` | `enumeration_metadata` | `enumeration_content`.
+
+```bash
+python3 scripts/run_journal.py ASK_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --question "<question>" --ask-type "<ask_type>"
+```
 
 ---
 
@@ -114,8 +122,18 @@ For each sub-query (or the single query for Recall/Enumeration):
 | enumeration_metadata | `enumeration_metadata` | `scroll` |
 | enumeration_content | `enumeration_content` | `lexscan` |
 
-> JOURNAL [Phase E forward-ref]: `DISPATCH_START` (agent=knowledge-retriever, sub_query_id=<id>, dispatches_used=N)
-> TELEMETRY [Phase E forward-ref]: flush token count after each dispatch
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>" --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after each dispatch:
+```
+if dispatches_used >= SOFT_WARN_THRESHOLD:
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold. Synthesis may be expensive."
+```
 
 For Synthesis: dispatch all N retrievers in **one message** as parallel Agent calls.
 Collect all results before proceeding to STEP 3.
@@ -151,26 +169,37 @@ sys.exit(0 if ok else 1)
 ```
 
 **On gate pass (exit 0 or enumeration mode):**
-> JOURNAL [Phase E forward-ref]: `GATE_PASS` (agent=knowledge-retriever, sub_query_id=<id>)
+```bash
+python3 scripts/run_journal.py GATE_PASS --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>"
+```
 
 Collect `output.ranked_chunks` for this sub-query.
 
 **On gate fail (exit 1):**
-> JOURNAL [Phase E forward-ref]: `GATE_FAIL` (agent=knowledge-retriever, sub_query_id=<id>)
+```bash
+python3 scripts/run_journal.py GATE_FAIL --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>" --gate-score 0.0
+```
 
 Apply Two-Strike ladder (`failure_count_retriever` is per sub-query):
 
 | `failure_count_retriever` | Action |
 |--------------------------|--------|
-| 1 (first fail) | Re-dispatch knowledge-retriever with reformulated/broadened query, model=sonnet. `dispatches_used += 1`. |
-| 2 (second fail) | Re-dispatch knowledge-retriever, model=**opus**. `dispatches_used += 1`. |
+| 1 (first fail) | Re-dispatch knowledge-retriever with reformulated/broadened query, model=sonnet. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn (see below). |
+| 2 (second fail) | Re-dispatch knowledge-retriever, model=**opus**. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn. |
 | 3 (Two-Strike) | Record sub-query as empty in coverage ledger. Pass empty ranked_chunks for this sub-query to STEP 3. |
 
-Check budget guard after each reiterate dispatch:
+After each reiterate dispatch (`dispatches_used += 1` in rows 1 and 2):
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>" --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after each reiterate dispatch:
 ```
 if dispatches_used >= SOFT_WARN_THRESHOLD:
-    > JOURNAL [Phase E forward-ref]: SOFT_WARN (dispatches_used=N)
-    Report: "Dispatch count (N) crossed soft-warn threshold. Synthesis may be expensive."
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold. Synthesis may be expensive."
 ```
 
 ---
@@ -223,8 +252,18 @@ For Recall and Enumeration: `deduped_chunks` = the single retriever's `ranked_ch
   dispatches_used += 1
 ```
 
-> JOURNAL [Phase E forward-ref]: `DISPATCH_START` (agent=answer-synthesizer, dispatches_used=N)
-> TELEMETRY [Phase E forward-ref]: flush token count
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent answer-synthesizer --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after dispatch:
+```
+if dispatches_used >= SOFT_WARN_THRESHOLD:
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold."
+```
 
 Save deduped_chunks to SYNTH_CHUNKS_TMP before dispatch (gate script reads this):
 ```bash
@@ -258,20 +297,38 @@ The script:
 Outputs JSON diagnostic to stdout. Routes on exit code:
 
 **Exit 0 — all gates pass:**
-> JOURNAL [Phase E forward-ref]: `GATE_PASS` (agent=answer-synthesizer)
+```bash
+python3 scripts/run_journal.py GATE_PASS --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent answer-synthesizer
+```
 
 Proceed to STEP 5 with the synthesizer's `output.answer`.
 
 **Exit 1 — one or more gates fail:**
-> JOURNAL [Phase E forward-ref]: `GATE_FAIL` (agent=answer-synthesizer, detail=<gate script stdout>)
+```bash
+python3 scripts/run_journal.py GATE_FAIL --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent answer-synthesizer --gate-score 0.0
+```
 
 Apply Two-Strike ladder (`failure_count_synthesizer`):
 
 | `failure_count_synthesizer` | Action |
 |-----------------------------|--------|
-| 1 (first fail) | Re-dispatch answer-synthesizer, same inputs, model=sonnet. `dispatches_used += 1`. |
-| 2 (second fail) | Re-dispatch answer-synthesizer, model=**opus**. `dispatches_used += 1`. |
+| 1 (first fail) | Re-dispatch answer-synthesizer, same inputs, model=sonnet. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn (see below). |
+| 2 (second fail) | Re-dispatch answer-synthesizer, model=**opus**. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn. |
 | 3 (Two-Strike) | Return: "Can't confirm an answer from your notes for this question. Gate failures: `<gate script output>`." |
+
+After each reiterate dispatch (`dispatches_used += 1` in rows 1 and 2):
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent answer-synthesizer --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after each reiterate dispatch:
+```
+if dispatches_used >= SOFT_WARN_THRESHOLD:
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold."
+```
 
 After reiterate dispatch: re-save SYNTH_OUTPUT_TMP and re-run gate script.
 
@@ -288,15 +345,16 @@ Note: <output.qualification>
 <answer text with citations>
 ```
 
-**Cost summary [Phase E forward-ref]:**
+**Cost summary:**
 ```
 Ask complete.
   Ask type:        <ask_type>
   Dispatches used: <dispatches_used>
-  (Cost telemetry: Phase E — not yet available)
 ```
 
-> JOURNAL [Phase E forward-ref]: `ASK_CLOSE` (ask_type=<type>, dispatches=N, coverage=<coverage_verdict>)
+```bash
+python3 scripts/run_journal.py ASK_CLOSE --run-id "$(cat "$_AINF_RUN_ID_FILE")" --ask-type "<ask_type>" --dispatches <dispatches_used> --coverage "<coverage_verdict>"
+```
 
 ---
 
@@ -336,9 +394,11 @@ Ask complete.
 
 ---
 
-## Journal + Telemetry Events [Phase E forward-ref]
+## Journal Events
 
-All events are **no-ops** until Phase E builds `scripts/run_journal.py` and Cost Telemetry.
+All events call `scripts/run_journal.py`. Run ID is generated via `mktemp` at session
+start, stored in `$_AINF_RUN_ID_FILE`, and read from that file for all subsequent
+events. Token telemetry is not available from skill context; dispatch count is the cost proxy.
 
 | Event | Trigger |
 |-------|---------|
@@ -348,7 +408,6 @@ All events are **no-ops** until Phase E builds `scripts/run_journal.py` and Cost
 | `GATE_FAIL` | After gate fails |
 | `SOFT_WARN` | dispatches_used ≥ SOFT_WARN_THRESHOLD |
 | `ASK_CLOSE` | After answer presented |
-| TELEMETRY flush | After each agent returns (tokens, spend) |
 
 ---
 

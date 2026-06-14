@@ -4,7 +4,7 @@ description: |
   /ingest <paths> orchestrator. Classifies each source (raw note/transcript vs
   pre-structured), dispatches note-summarizer (if raw) then knowledge-indexer per
   source, runs Quality Gates deterministically, enforces the ingest lock via CLI
-  exit codes, journals events (Phase E forward-refs), and applies the Two-Strike
+  exit codes, journals events via scripts/run_journal.py, and applies the Two-Strike
   rule. One level of nesting — skill only, per ADR-0001.
 trigger: /ingest
 metadata:
@@ -15,7 +15,7 @@ metadata:
     - "agents return {output, metadata, self_report} ONLY; skill owns all gates and routing"
     - "knowledge-indexer gate fail on index_suspect/error → no retry; report to user"
     - "Two-Strike rule: same failure retried twice → needs_user"
-    - "journal events are Phase E forward-refs (no-op until Phase E builds run_journal.py)"
+    - "journal events call scripts/run_journal.py; run_id written to $_AINF_RUN_ID_FILE (mktemp) at RUN_START"
     - "note-summarizer faithfulness is a dev-time Eval (Phase D), NOT a runtime gate"
 ---
 
@@ -51,7 +51,14 @@ ls -la "<path>"
 
 If **all** supplied paths are absent: report summary and stop.
 
-> JOURNAL [Phase E forward-ref]: `RUN_START` event (paths=N, run_id=<uuid>)
+```bash
+_AINF_RUN_ID_FILE=$(mktemp /tmp/ainf_run_id_XXXXXX)
+python3 -c "import uuid; print(uuid.uuid4())" > "$_AINF_RUN_ID_FILE"
+python3 scripts/run_journal.py RUN_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --paths <count-of-valid-paths>
+```
+
+> **SECURITY:** When substituting `<path>` or `<verdict>` into bash blocks, pass values via env var or
+> temp file — never inline in the command string.
 
 ---
 
@@ -86,7 +93,18 @@ For each **raw** source path:
   dispatches_used += 1
 ```
 
-> JOURNAL [Phase E forward-ref]: `DISPATCH_START` (agent=note-summarizer, source=<path>, dispatches_used=N)
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent note-summarizer --source "<path>" --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after each dispatch:
+```
+if dispatches_used >= SOFT_WARN_THRESHOLD:
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold (SOFT_WARN_THRESHOLD)."
+```
 
 On return, capture `{output, metadata, self_report}`.
 
@@ -111,26 +129,37 @@ sys.exit(0 if ok else 1)
 ```
 
 **Exit 0 — gate pass:**
-> JOURNAL [Phase E forward-ref]: `GATE_PASS` (agent=note-summarizer, source=<path>)
+```bash
+python3 scripts/run_journal.py GATE_PASS --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent note-summarizer --source "<path>"
+```
 
 Proceed to STEP 3 with `output.summary_path`.
 
 **Exit 1 — gate fail:**
-> JOURNAL [Phase E forward-ref]: `GATE_FAIL` (agent=note-summarizer, source=<path>, verdict=<sr.verdict>)
+```bash
+python3 scripts/run_journal.py GATE_FAIL --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent note-summarizer --source "<path>" --verdict "<sr.verdict>" --gate-score 0.0
+```
 
 Apply Two-Strike ladder (track `failure_count_note_summarizer` — reset between sources):
 
 | `failure_count_note_summarizer` | Action |
 |---------------------------------|--------|
-| 1 (first fail) | Re-dispatch note-summarizer, same source, model=sonnet. `dispatches_used += 1`. |
-| 2 (second fail) | Re-dispatch note-summarizer, same source, model=**opus**. `dispatches_used += 1`. |
+| 1 (first fail) | Re-dispatch note-summarizer, same source, model=sonnet. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn (see below). |
+| 2 (second fail) | Re-dispatch note-summarizer, same source, model=**opus**. `dispatches_used += 1`. Emit DISPATCH_START + check soft-warn. |
 | 3 (Two-Strike) | `needs_user` — report: "note-summarizer failed 3 times for `<path>`. Manual review required. Missing: `<missing_sections>` / entities: `<missing_entities>`." Increment `sources_failed`. Skip to next source. |
 
-Check budget after each reiterate:
+After each reiterate dispatch (`dispatches_used += 1` in rows 1 and 2):
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent note-summarizer --source "<path>" --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after each dispatch (including reiterates):
 ```
 if dispatches_used >= SOFT_WARN_THRESHOLD:
-    > JOURNAL [Phase E forward-ref]: SOFT_WARN (dispatches_used=N)
-    Report: "Dispatch count (N) crossed soft-warn threshold (SOFT_WARN_THRESHOLD)."
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold (SOFT_WARN_THRESHOLD)."
 ```
 
 ---
@@ -147,7 +176,18 @@ For each source (using `summary_path` from STEP 2 if raw, or the original path i
   dispatches_used += 1
 ```
 
-> JOURNAL [Phase E forward-ref]: `DISPATCH_START` (agent=knowledge-indexer, source=<path>, dispatches_used=N)
+```bash
+python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-indexer --source "<path>" --dispatches-used <dispatches_used>
+```
+
+Check soft-warn after dispatch:
+```
+if dispatches_used >= SOFT_WARN_THRESHOLD:
+    ```bash
+    python3 scripts/run_journal.py SOFT_WARN --run-id "$(cat "$_AINF_RUN_ID_FILE")" --dispatches-used <dispatches_used>
+    ```
+    Report: "Dispatch count (<dispatches_used>) crossed soft-warn threshold (SOFT_WARN_THRESHOLD)."
+```
 
 On return, capture `{output, metadata, self_report}`.
 
@@ -188,13 +228,17 @@ sys.exit(0 if ok else 1)
 
 **Exit 0:** `sources_indexed += 1`. Report: "Indexed: `<path>` → document_id=`<output.document_id>`, chunks=`<output.chunk_count>`."
 
-> JOURNAL [Phase E forward-ref]: `GATE_PASS` (agent=knowledge-indexer, document_id=<id>)
+```bash
+python3 scripts/run_journal.py GATE_PASS --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-indexer --document-id "<output.document_id>"
+```
 
 **Exit 1:** Treat as `index_suspect` — proceed to STEP 3c.
 
 ### STEP 3c — INDEX_SUSPECT / error (no retry)
 
-> JOURNAL [Phase E forward-ref]: `INDEX_SUSPECT` (document_id=<output.document_id if available>, source=<path>, verdict=<sr.verdict>)
+```bash
+python3 scripts/run_journal.py INDEX_SUSPECT --run-id "$(cat "$_AINF_RUN_ID_FILE")" --source "<path>" --verdict "<sr.verdict>"
+```
 
 Report to user:
 ```
@@ -226,7 +270,9 @@ Ingest complete.
 
 If `sources_failed > 0`: list each failed source and its failure reason.
 
-> JOURNAL [Phase E forward-ref]: `RUN_CLOSE` (indexed=N, failed=M, dispatches=K)
+```bash
+python3 scripts/run_journal.py RUN_CLOSE --run-id "$(cat "$_AINF_RUN_ID_FILE")" --indexed <sources_indexed> --failed <sources_failed> --dispatches <dispatches_used>
+```
 
 ---
 
@@ -255,13 +301,14 @@ Knowledge-indexer has **no Two-Strike**: its failures are non-retryable by desig
 
 ---
 
-## Journal Events [Phase E forward-ref]
+## Journal Events
 
-All events below are **no-ops** until Phase E builds `scripts/run_journal.py`.
+All events call `scripts/run_journal.py`. Run ID is generated once at `RUN_START`
+and read from `/tmp/ainf_run_id` for all subsequent events in the same run.
 
 | Event | Trigger |
 |-------|---------|
-| `RUN_START` | Before first source processing |
+| `RUN_START` | After path validation, before first source processing |
 | `DISPATCH_START` | Before each agent dispatch |
 | `GATE_PASS` | After gate passes |
 | `GATE_FAIL` | After gate fails |

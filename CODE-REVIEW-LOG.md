@@ -167,3 +167,39 @@ had hidden: verify-via-MatchText false-negative (good docs deleted), unverified 
 generation-blind probes, result-local vs corpus-local max-gen dedup (search/lexscan/scroll),
 promote-count/exception data-loss, lock heartbeat reclaim, multi-doc half-ingest, empty-tag
 MatchAny([]) , and more.
+
+---
+
+## Phase E — Run Journal — 2026-06-14
+
+9-angle adversarial review (5 parallel finders + 1 sweep) of Phase E:
+`src/aineverforget/run_journal.py`, `scripts/run_journal.py`,
+`.claude/skills/ask/SKILL.md`, `.claude/skills/ingest/SKILL.md`, `src/aineverforget/cli.py`.
+**15 findings. Status: NEEDS FIXES. Fix handoff → CODEX-FIXLIST-PHASE-E.md.**
+
+**Critical:**
+1. Base64 regex `[A-Za-z0-9+/]{40,}` mangles source file paths (`/` in charset).
+   Every GATE_FAIL/INDEX_SUSPECT source field silently becomes `[REDACTED].ext`.
+2. Shell injection in SKILL.md bash blocks: user question/path/verdict interpolated raw
+   into double-quoted shell strings. Old forward-ref markers were inert; live bash is exploitable.
+
+**Error:**
+3. Shared `/tmp/ainf_run_id` causes cross-run event misattribution under concurrency.
+4. Two-Strike reiterate dispatches emit no DISPATCH_START event; DB underreports vs counter.
+5. ASK_START emitted before routing: ask_type always absent from record and recent_runs().
+6. Single-backend write failure silent (`len(errors)==2`); JSONL/SQLite diverge invisibly.
+
+**Warning:**
+7. Soft-warn check only on reiterate path; first-pass N-sub-query fan-out crosses threshold silently.
+8. GATE_FAIL calls in both skills omit `--gate-score`; gate_score column always NULL.
+9. Dead allowlist entries: verdict/gate_score in GATE_FAIL, tokens/spend in TELEMETRY (shadowed
+   by _TOP_LEVEL_FIELDS; elif branches unreachable).
+10. PRAGMA busy_timeout overrides Python timeout= (SQLite C API contract; same value now, trap later).
+11. Broad `except Exception` in recent_events()/recent_runs() swallows schema errors silently.
+12. executescript DDL on every INSERT; schema write lock per journal write; contends under parallel
+    agent fan-out.
+
+**Nice-to-have:**
+13. `--json` + ValueError = empty stdout; caller gets JSONDecodeError.
+14. `"detail"` key in GATE_FAIL allowlist creates `record["detail"]["detail"]` nesting.
+15. ask_id/ingest_id schema columns always NULL (no call site wires them).

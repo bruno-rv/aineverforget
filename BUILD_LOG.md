@@ -141,6 +141,39 @@ Bugs found and fixed during integration run:
 - **eval_retrieval.py lexscan routing**: `case.get("type")` but fixture uses `search_mode` → lexscan cases routed as hybrid. Fixed to check `search_mode` first.
 - **eval_retrieval.py lexscan term key**: `case.get("term")` but fixture uses `query` → term always empty string. Fixed to fall back to `query`.
 
+## Phase E — Run Journal + Observability — COMPLETE
+
+> Status: **370 tests pass** (29 new journal tests). Smoke-validated: JSONL+SQLite dual-write,
+> redaction, query functions, CLI driver, `aineverforget status` journal section.
+
+Files:
+- `src/aineverforget/run_journal.py` — core module: VALID_EVENTS frozenset, per-event
+  detail allowlist, `redact()` (JWT/hex/base64 + key-name blocklist), fcntl-locked JSONL
+  append, SQLite WAL mirror (busy_timeout=5000), `append_event()` (both writes non-fatal;
+  stderr warn if both fail), `recent_events(n)`, `recent_runs(n)`.
+- `scripts/run_journal.py` — CLI driver: all event types + top-level/detail fields as flags;
+  `--list N`, `--runs N` query modes; always exits 0 (non-fatal).
+- `tests/test_run_journal.py` — 29 tests: redact (JWT/hex/dict/nested), append_event
+  (JSONL + SQLite write, allowlist, unknown-kwarg drop, dual-failure non-fatal), recent_events,
+  recent_runs (dispatch count aggregation).
+- `.claude/skills/ingest/SKILL.md` — 9 forward-ref markers replaced with real
+  `scripts/run_journal.py` bash calls; run_id written to `/tmp/ainf_run_id` at RUN_START.
+- `.claude/skills/ask/SKILL.md` — all JOURNAL + TELEMETRY forward-refs replaced;
+  cost_tally_tokens removed; cost summary block cleaned; run_id from `/tmp/ainf_run_id`.
+- `src/aineverforget/cli.py` — `cmd_status` enhanced: `recent_events(5)` + `recent_runs(3)`
+  added to both JSON (`result["journal"]`) and non-JSON output.
+
+Key decisions:
+- **No TELEMETRY events emitted from skills**: token counts are not available from the
+  orchestrator skill context (Agent tool returns text, not usage). TELEMETRY event type
+  stays in VALID_EVENTS for future use; dispatch count is the v1 cost proxy.
+- **run_id via /tmp/ainf_run_id**: Bash state doesn't persist across Claude Code tool calls;
+  run_id written to `/tmp/ainf_run_id` at RUN_START/ASK_START and read with `$(cat ...)`.
+- **Journal failures always non-fatal**: each of JSONL + SQLite wrapped in try/except
+  independently; stderr warning only when BOTH fail simultaneously.
+- **Journal dir**: `$AINF_JOURNAL_DIR` env var or `<project_root>/runs/` (already in .gitignore).
+- **`aineverforget status` adds journal section**: recent runs + recent events only when DB
+  exists (empty journal = no section shown, not an error).
+
 ## Next phases (per PLAN.md)
-- E: observability (Run Journal JSONL+SQLite, Cost Telemetry — required for skill journal/telemetry forward-refs to become functional).
 - F: supervised live dry-run on real Qdrant + sign-off.
