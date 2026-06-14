@@ -126,9 +126,9 @@ RESOLUTION ORDER
 
 **Process:**
 
-1. Parse dispatch payload. Determine enumeration type from `ranked_chunks` shape: lexscan results have `text` fields (content enumeration); scroll results have `ranked_chunks: []` (metadata enumeration with document list in metadata).
+1. Parse dispatch payload. Determine enumeration type from `ranked_chunks` shape and metadata: lexscan results have `text` fields (content enumeration); scroll results have `ranked_chunks: []` plus `metadata.documents` (metadata enumeration).
 2. For content enumeration (lexscan): answer is an enumerated list of documents/occurrences. Each document referenced in the answer gets one citation entry (claim = the list item or statement about that document).
-3. For metadata enumeration (scroll): answer lists the documents/sources matching the filter. No text-level grounding needed — `groundedness_pass` is `true` by convention when the answer is a direct listing of the input documents with no added claims.
+3. For metadata enumeration (scroll): answer lists only the documents/sources in `metadata.documents`. No text-level grounding needed — `groundedness_pass` is `true` by convention when the answer is a direct listing of the input documents with no added claims.
 4. Compute self_report booleans. For metadata enumeration, `all_claims_cited` and `groundedness_pass` are trivially true when the answer only lists documents surfaced in the input.
 5. Set `coverage_verdict` based on ledger. For enumeration with zero results: lexscan is exhaustive — "zero occurrences" IS a complete answer. The skill marks the ledger entry "answered" (not "empty") for a completed lexscan with no hits. Set `coverage_verdict: complete`, answer explicitly states the zero count (e.g., "Your notes contain no references to X."). Never treat zero enumeration results as a refusal or partial.
 6. Return FROZEN triple.

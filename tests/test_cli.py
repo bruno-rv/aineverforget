@@ -43,6 +43,7 @@ def _make_settings(**overrides):
     s.qdrant_url = "http://localhost:6333"
     s.collection = "test_collection"
     s.embed_model = "BAAI/bge-m3"
+    s.embed_dim = 1024
     s.verify_topical_limit = 10
     s.verify_specific_limit = 5
     s.verify_negative_limit = 5

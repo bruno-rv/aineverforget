@@ -236,7 +236,11 @@ def cmd_search(args: argparse.Namespace) -> int:
 
         settings = load_settings()
         embedder = BGEM3Embedder(model_name=settings.embed_model)
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
 
         query_emb = embedder.encode_query(args.query)
         result = store.search(
@@ -284,7 +288,11 @@ def cmd_lexscan(args: argparse.Namespace) -> int:
         from aineverforget.store import QdrantStore
 
         settings = load_settings()
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
 
         result = store.lexscan(
             args.term,
@@ -338,7 +346,11 @@ def cmd_scroll(args: argparse.Namespace) -> int:
         from aineverforget.store import QdrantStore
 
         settings = load_settings()
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
 
         result = store.scroll(
             source_id=getattr(args, "source_id", None),
@@ -390,7 +402,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
         settings = load_settings()
         embedder = BGEM3Embedder(model_name=settings.embed_model)
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
 
         generation = getattr(args, "generation", None)
         if generation is None:
@@ -508,7 +524,11 @@ def cmd_status(args: argparse.Namespace) -> int:
         from aineverforget.store import QdrantStore
 
         settings = load_settings()
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
         result = store.status()
     except NotImplementedError:
         return _not_implemented("status", json_mode=args.json)
@@ -571,7 +591,11 @@ def cmd_gc(args: argparse.Namespace) -> int:
         from aineverforget.store import QdrantStore
 
         settings = load_settings()
-        store = QdrantStore(url=settings.qdrant_url, collection_name=settings.collection)
+        store = QdrantStore(
+            url=settings.qdrant_url,
+            collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
+        )
         result = store.gc()
     except NotImplementedError:
         return _not_implemented("gc", json_mode=args.json)

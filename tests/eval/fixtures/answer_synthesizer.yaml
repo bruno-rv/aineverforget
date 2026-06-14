@@ -69,6 +69,37 @@ cases:
       exit_code: 1
       all_cited_ids_in_input: false
 
+  - id: gate_all_claims_cited_fail
+    description: "Answer contains a factual sentence with no matching citation claim"
+    synth_output:
+      output:
+        answer: "Blue-green deployment was chosen. Rate limiting will use token buckets."
+        citations:
+          - claim: "Blue-green deployment was chosen."
+            chunk_id: "aaaa0000-0000-0000-0000-000000000001"
+            document_path: "tests/eval/corpus/note_raw_transcript.md"
+            title: "DataSync Migration"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "complete"
+        qualification: null
+      metadata:
+        question: "What migration and rate limiting plans were chosen?"
+        ask_type: "synthesis"
+        input_chunk_count: 1
+        sub_query_ledger:
+          "migration plan": "answered"
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "aaaa0000-0000-0000-0000-000000000001"
+        text: "The team chose blue-green deployment strategy for the DataSync migration."
+        document_id: "6131b682-d4c2-5c9e-a78b-7d35067e0b12"
+    expected:
+      exit_code: 1
+      all_claims_cited: false
+
   # --- gate: groundedness_pass ---
   - id: gate_groundedness_fail
     description: "Claim has no key-term overlap with cited chunk → gate fail"

@@ -1198,6 +1198,45 @@ def test_source_id_override_recomputes_document_id(tmp_path):
         )
 
 
+def test_source_id_override_keeps_multiple_paths_distinct(tmp_path):
+    """A shared source_id must not collapse separate input paths into one doc."""
+    store = _make_store()
+    settings = _make_settings()
+    embedder = FakeEmbedder()
+
+    first = _write_md(
+        tmp_path,
+        "first.md",
+        "# First\n\nAlpha project notes use Qdrant for indexed memory.",
+    )
+    second = _write_md(
+        tmp_path,
+        "second.md",
+        "# Second\n\nBeta project notes discuss retrieval and citations.",
+    )
+
+    report = ingest_paths(
+        [first, second],
+        source_id="custom://meeting-batch",
+        settings=settings,
+        store=store,
+        embedder=embedder,
+        probes=None,
+        require_verify=False,
+        run_dir=tmp_path / "runs",
+    )
+
+    assert report.success_count == 2
+    document_ids = [r.document_id for r in report.results]
+    assert len(set(document_ids)) == 2
+    scroll = store.scroll(source_id="custom://meeting-batch")
+    assert scroll["document_count"] == 2
+    assert {doc["document_path"] for doc in scroll["documents"]} == {
+        "custom://meeting-batch/first.md",
+        "custom://meeting-batch/second.md",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Test 15: _get_active_sha returns sha from MAX active generation (finding #9)
 # ---------------------------------------------------------------------------

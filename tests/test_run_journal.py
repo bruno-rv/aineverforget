@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +18,9 @@ from aineverforget.run_journal import (
     recent_runs,
     redact,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +195,25 @@ class TestAppendEvent:
             append_event("GATE_PASS", run_id=f"r{i}", agent="note-summarizer")
         lines = (journal_dir / "journal.jsonl").read_text().splitlines()
         assert len(lines) == 5
+
+
+def test_script_runs_from_src_layout_checkout_without_install(tmp_path: Path):
+    """The documented script entrypoint must work before editable install."""
+    env = {
+        "AINF_JOURNAL_DIR": str(tmp_path),
+        "PATH": os.environ.get("PATH", ""),
+    }
+    proc = subprocess.run(
+        [sys.executable, "-S", "scripts/run_journal.py", "--list", "1"],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0
+    assert json.loads(proc.stdout) == []
 
 
 # ---------------------------------------------------------------------------

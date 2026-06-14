@@ -288,6 +288,7 @@ def ingest_paths(
         store = QdrantStore(
             url=settings.qdrant_url,
             collection_name=settings.collection,
+            dense_dim=settings.embed_dim,
         )
 
     if embedder is None:
@@ -309,6 +310,7 @@ def ingest_paths(
         for path in paths:
             result = _ingest_one_path(
                 path=path,
+                path_count=len(paths),
                 source_id=source_id,
                 producer=producer,
                 settings=settings,
@@ -347,6 +349,7 @@ def ingest_paths(
 def _ingest_one_path(
     *,
     path: Path,
+    path_count: int,
     source_id: str | None,
     producer: str,
     settings: object,
@@ -397,18 +400,28 @@ def _ingest_one_path(
             )
 
         # Apply caller overrides to ALL loaded documents.
-        # When --source-id is given it acts as a stable, cross-machine identifier;
-        # use it for both source_id and document_path in the document_id computation
-        # so that document_id = UUIDv5(NS, f"{source_id}|{source_id}") — stable
-        # regardless of the absolute file path on the current machine.
+        # A single file with --source-id keeps the original cross-machine-stable
+        # identity: document_id = UUIDv5(NS, f"{source_id}|{source_id}").
+        # When one source_id covers multiple paths or one loader returns multiple
+        # Documents, add a logical path component so documents do not collapse into
+        # successive generations of the same document_id.
         rewritten = []
-        for d in documents:
+        document_count = len(documents)
+        for index, d in enumerate(documents):
             updates: dict = {"producer": producer}
             if source_id is not None:
+                document_path = _source_override_document_path(
+                    path_source_id,
+                    path,
+                    d,
+                    document_index=index,
+                    document_count=document_count,
+                    path_count=path_count,
+                )
                 updates["source_id"] = path_source_id
-                updates["document_path"] = path_source_id
+                updates["document_path"] = document_path
                 updates["document_id"] = identity_mod.make_document_id(
-                    path_source_id, path_source_id
+                    path_source_id, document_path
                 )
             rewritten.append(d.model_copy(update=updates))
         documents = rewritten
@@ -702,6 +715,27 @@ def _ingest_one_document(
             loader_verdict=loader_verdict_str,
             detail=" | ".join(detail_parts),
         )
+
+
+def _source_override_document_path(
+    source_id: str,
+    path: Path,
+    document: object,
+    *,
+    document_index: int,
+    document_count: int,
+    path_count: int,
+) -> str:
+    """Return the logical document_path to pair with an explicit source_id."""
+    if path_count == 1 and document_count == 1:
+        return source_id
+
+    component = Path(str(getattr(document, "document_path", "") or path.name)).name
+    if not component:
+        component = path.name
+    if document_count > 1:
+        component = f"{component}#document-{document_index + 1}"
+    return f"{source_id.rstrip('/')}/{component}"
 
 
 def _get_active_sha(store: object, document_id: str) -> str | None:
