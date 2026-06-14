@@ -86,8 +86,26 @@ Key decisions:
 - Contract typo fixed: `"failed"` → `"error"` in knowledge-indexer gate (real outcomes: success/no_op/
   index_suspect/error/skipped)
 
+## Phase C — Orchestrator Skills — COMPLETE
+
+> Status: **3 files** — `/ingest` skill, `/ask` skill, `gate_synthesis.py` gate script (smoke-tested 4 cases).
+
+Files:
+- `.claude/skills/ingest/SKILL.md` — per-source dispatch (note-summarizer if raw → knowledge-indexer), probe gate, INDEX_SUSPECT routing, Two-Strike on note-summarizer, lock/skip/no-op handling
+- `.claude/skills/ask/SKILL.md` — Recall/Synthesis/Enumeration routing, Synthesis decomposition + preflight fan-out estimate, retriever ×N + dedup by point_id + coverage ledger, synthesizer gate via gate script, Two-Strike on retriever + synthesizer
+- `scripts/gate_synthesis.py` — deterministic CLI gate for answer-synthesizer: recomputes `all_cited_ids_in_input` (set join), `groundedness_pass` (lexical overlap, no LLM judge), `coverage_ledger_consistent` (partial verdict + qualification required when any sub-query is empty); exit 0/1 + JSON diagnostics
+
+Key decisions:
+- Gate execution form: simple boolean/integer fields checked via inline `python3 -c` one-liner; synthesizer judgment fields recomputed by `scripts/gate_synthesis.py` (exit-code-based, deterministic — per ADR-0003 and advisor)
+- All CLI command signatures verified against `cli.py` before writing (ingest/verify/search/lexscan/scroll — all use positional args, not `--<verb>-id` flags)
+- Journal and Cost Telemetry calls are Phase E forward-refs (explicit no-op markers in both skills); skills are authored but not end-to-end executable until E
+- Opus on reiterate ladder is a documented exception (PLAN.md risk #6) — kept as written, not "corrected" by global model rules
+- Retriever gate: lexscan/scroll modes always pass (empty is valid); hybrid modes use `candidate_count ≥ 1 AND (dense_hits ≥ 1 OR sparse_hits ≥ 1) AND citationable_count ≥ 1` (per contract)
+- Synthesizer judgment fields annotation enforced: skill saves ranked_chunks to `/tmp/ainf_synth_chunks.json` before dispatch so gate script can join against it
+- Coverage ledger built from retriever `candidate_count` (authoritative) not synthesizer self-report
+- Groundedness gate: tokenize claim + chunk text, filter stopwords, require ≥1 shared non-stopword token; deterministic, no NLI model (v1.1 upgrade per PLAN.md risk #4)
+
 ## Next phases (per PLAN.md)
-- C: orchestrator skills `/ingest` `/ask`.
 - D: dev-time eval system (gold fixtures + RAGAS + cross-model judge in CI).
-- E: observability (Run Journal JSONL+SQLite, Cost Telemetry).
+- E: observability (Run Journal JSONL+SQLite, Cost Telemetry — required for skill journal/telemetry forward-refs to become functional).
 - F: supervised live dry-run on real Qdrant + sign-off.
