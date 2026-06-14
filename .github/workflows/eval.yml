@@ -1,6 +1,7 @@
 name: Eval Harness
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'src/aineverforget/chunking.py'

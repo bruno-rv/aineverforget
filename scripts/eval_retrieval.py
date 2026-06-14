@@ -2,7 +2,7 @@
 """scripts/eval_retrieval.py — retrieval eval against knowledge_retriever.yaml fixtures.
 
 Requires:
-  - Live Qdrant at 127.0.0.1:6333 (or QDRANT_URL env var)
+  - Live Qdrant at 127.0.0.1:6333 (or AINF_QDRANT_URL env var)
   - Corpus ingested: python3 scripts/eval_retrieval.py --ingest first
   - aineverforget CLI on PATH (or run from project root with .venv active)
 

@@ -62,6 +62,7 @@ No heavy imports at module level.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -192,7 +193,7 @@ def ingest_paths(
     settings: "Settings | None" = None,
     store: "QdrantStore | None" = None,
     embedder: "BGEM3Embedder | None" = None,
-    probes: "list[Probe] | None" = None,
+    probes: "list[Probe] | Callable[[object], list[Probe]] | None" = None,
     require_verify: bool = True,
     run_dir: Path | None = None,
     session_id: str | None = None,
@@ -230,7 +231,8 @@ def ingest_paths(
         default), the call raises ``ValueError`` — the CLI fail-closed contract
         prevents accidental unverified promotion.  Pass ``require_verify=False``
         (via ``--no-verify`` CLI flag) for explicit trusted/bulk ingest without
-        probes.  The knowledge-indexer agent always supplies probes.
+        probes.  The CLI supplies a per-document probe factory for the
+        knowledge-indexer agent workflow.
     require_verify:
         If ``True`` (default) AND ``probes is None``, raise ``ValueError`` to
         prevent silent unverified promotion.  Set to ``False`` only when the
@@ -602,7 +604,8 @@ def _ingest_one_document(
 
     # Step 6: Verify (if probes supplied)
     if probes is not None:
-        verdict = verify_mod.run_probes(store, document_id, G1, probes, embedder)
+        document_probes = probes(document) if callable(probes) else probes
+        verdict = verify_mod.run_probes(store, document_id, G1, document_probes, embedder)
         verify_passed = verdict.passed
     else:
         verify_passed = True

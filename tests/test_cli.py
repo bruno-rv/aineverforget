@@ -16,11 +16,12 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aineverforget.cli import main
+from aineverforget.cli import _derive_document_probes, main
 from aineverforget.ingest import IngestOutcome, IngestReport, PathIngestResult
 from aineverforget.models import SearchResult, RetrievedChunk
 from aineverforget.verify import (
@@ -42,6 +43,9 @@ def _make_settings(**overrides):
     s.qdrant_url = "http://localhost:6333"
     s.collection = "test_collection"
     s.embed_model = "BAAI/bge-m3"
+    s.verify_topical_limit = 10
+    s.verify_specific_limit = 5
+    s.verify_negative_limit = 5
     for k, v in overrides.items():
         setattr(s, k, v)
     return s
@@ -385,6 +389,44 @@ def test_ingest_passes_producer(tmp_path):
         main(["ingest", "--producer", "agent-x", str(f)])
     call_kwargs = mock.call_args.kwargs
     assert call_kwargs["producer"] == "agent-x"
+
+
+def test_ingest_passes_probe_factory_by_default(tmp_path):
+    report = _make_ingest_report(success=1)
+    with patch(_INGEST_PATH, return_value=report) as mock:
+        f = tmp_path / "note.md"
+        f.write_text("# Hello")
+        main(["ingest", str(f)])
+    call_kwargs = mock.call_args.kwargs
+    assert call_kwargs["require_verify"] is True
+    assert callable(call_kwargs["probes"])
+
+
+def test_ingest_no_verify_disables_probe_factory(tmp_path):
+    report = _make_ingest_report(success=1)
+    with patch(_INGEST_PATH, return_value=report) as mock:
+        f = tmp_path / "note.md"
+        f.write_text("# Hello")
+        main(["ingest", "--no-verify", str(f)])
+    call_kwargs = mock.call_args.kwargs
+    assert call_kwargs["require_verify"] is False
+    assert call_kwargs["probes"] is None
+
+
+def test_ingest_probe_factory_prefers_body_for_specific_probe():
+    document = SimpleNamespace(
+        title="Agent Simulation DataSync",
+        raw_text=(
+            "# Agent Simulation DataSync\n\n"
+            "Alice Chen chose blue-green deployment for DataSync."
+        ),
+    )
+
+    probes = _derive_document_probes(document, _make_settings())
+    specific = next(p for p in probes if p.probe_type is ProbeType.specific)
+
+    assert specific.query == "Alice"
+    assert specific.expected_substring == "Alice"
 
 
 # ---------------------------------------------------------------------------
@@ -1070,5 +1112,9 @@ def test_verify_derives_all_three_probe_types_from_chunk_text():
     assert ProbeType.negative in probe_types, (
         "cmd_verify must always include a negative probe"
     )
+    limits = {p.probe_type: p.limit for p in probes_passed}
+    assert limits[ProbeType.topical] == settings_mock.verify_topical_limit
+    assert limits[ProbeType.specific] == settings_mock.verify_specific_limit
+    assert limits[ProbeType.negative] == settings_mock.verify_negative_limit
     # The get_chunks call must have been made with the correct document_id and generation
     store_mock.get_chunks.assert_called_once_with("doc-text-001", 1)

@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from aineverforget.embedding import BGEM3Embedder
     from aineverforget.store import QdrantStore
 
+MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE = 3
+
 
 # ---------------------------------------------------------------------------
 # Probe input types
@@ -175,10 +177,12 @@ def run_probes(
                 the verification view filter.  The pending document_id must
                 NOT appear in the top-k results for an unrelated query.
 
-    Cold-start detection:
+    Cold-start / near-empty detection:
     Before running the negative probe, check whether any active Chunks exist
     with ``document_id != document_id`` (using ``store.scroll()`` with no
-    filters and checking for distinct document_ids).  If none, set
+    filters and checking for distinct document_ids).  If fewer than
+    ``MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE`` unrelated active Documents exist,
+    set
     ``probe_result.deferred = True`` and skip the negative probe.
 
     Pass / fail rules:
@@ -222,13 +226,17 @@ def run_probes(
     # Build the verification view filter once: active OR (doc_id=X, gen=G+1)
     view_filter = store.verification_view_filter(document_id, generation)
 
-    # Cold-start detection: does any active Document other than ours exist?
+    # Cold-start / near-empty detection: a dense search against a tiny corpus
+    # must return some nearest neighbors even for unrelated queries, so the
+    # negative probe is not meaningful until there are several unrelated docs.
     scroll_result = store.scroll()
     unrelated_active_docs = [
         d for d in scroll_result["documents"]
         if d["document_id"] != document_id
     ]
-    has_unrelated_active = len(unrelated_active_docs) > 0
+    has_negative_background = (
+        len(unrelated_active_docs) >= MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE
+    )
 
     probe_results: list[ProbeResult] = []
     negative_deferred = False
@@ -245,8 +253,8 @@ def run_probes(
             probe_results.append(result)
 
         elif probe.probe_type == ProbeType.negative:
-            if not has_unrelated_active:
-                # Cold-start: defer the negative probe
+            if not has_negative_background:
+                # Cold-start / near-empty corpus: defer the negative probe.
                 negative_deferred = True
                 deferred_result = ProbeResult(
                     probe=probe,
@@ -254,8 +262,11 @@ def run_probes(
                     deferred=True,
                     matched_chunk_ids=[],
                     detail=(
-                        "negative probe DEFERRED: no unrelated active Documents "
-                        "exist yet (cold-start). Topical/specific still apply."
+                        "negative probe DEFERRED: insufficient unrelated active "
+                        f"Documents for a meaningful negative probe "
+                        f"({len(unrelated_active_docs)} found, need "
+                        f"{MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE}). "
+                        "Topical/specific still apply."
                     ),
                 )
                 probe_results.append(deferred_result)

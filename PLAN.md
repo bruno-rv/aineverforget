@@ -17,7 +17,8 @@ Sources itself — it indexes what you supply and journals what it does.
 
 > Agent/KB artifacts live under `.claude/agentspec/` (Claude Code is the Agent
 > runtime, matching `neverforget` and the user's global CLAUDE.md). This is
-> canonical; `.codex/` is not used for AgentSpec artifacts.
+> canonical; `.codex/` mirrors these artifacts for Codex sessions and must stay
+> in sync with `.claude/`.
 
 ## Architecture (two layers)
 

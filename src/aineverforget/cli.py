@@ -35,6 +35,67 @@ import json
 import sys
 
 
+_PROBE_STOPWORDS = frozenset({
+    "about", "after", "again", "also", "another", "because", "before",
+    "between", "could", "every", "first", "from", "have", "here", "into",
+    "more", "most", "other", "over", "same", "should", "some", "such",
+    "than", "that", "their", "them", "then", "there", "these", "they",
+    "this", "those", "through", "under", "very", "what", "when", "where",
+    "which", "while", "with", "would", "your",
+})
+
+
+def _first_specific_word(text: str) -> str | None:
+    """Return the first distinctive word suitable for a specific verify probe."""
+    for word in text.split():
+        cleaned = word.strip(".,;:!?\"'()[]{}]")
+        normalized = cleaned.lower()
+        if len(normalized) >= 5 and normalized not in _PROBE_STOPWORDS and normalized.isalpha():
+            return cleaned
+    return None
+
+
+def _derive_document_probes(document: object, settings: object) -> list[object]:
+    """Derive topical/specific/negative probes for CLI ingest verification."""
+    from aineverforget.verify import Probe, ProbeType
+
+    raw_text = getattr(document, "raw_text", "") or ""
+    title = getattr(document, "title", "") or ""
+    topical_query = title.strip() if title.strip() else " ".join(raw_text.split()[:10])
+    body_text = "\n".join(
+        line for line in raw_text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+
+    probes: list[object] = [
+        Probe(
+            probe_type=ProbeType.topical,
+            query=topical_query,
+            limit=settings.verify_topical_limit,
+        ),
+    ]
+
+    specific_word = _first_specific_word(body_text) or _first_specific_word(raw_text)
+    if specific_word:
+        probes.append(
+            Probe(
+                probe_type=ProbeType.specific,
+                query=specific_word,
+                expected_substring=specific_word,
+                limit=settings.verify_specific_limit,
+            )
+        )
+
+    probes.append(
+        Probe(
+            probe_type=ProbeType.negative,
+            query="xyzzy_nonexistent_term_for_negative_probe_aineverforget",
+            limit=settings.verify_negative_limit,
+        )
+    )
+    return probes
+
+
 # ---------------------------------------------------------------------------
 # JSON output helpers
 # ---------------------------------------------------------------------------
@@ -79,16 +140,23 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     Delegates to ``aineverforget.ingest.ingest_paths()``.
     Exits 3 on lock overlap, 4 on INDEX_SUSPECT, 0 on success.
     """
+    from aineverforget.config import load_settings
     from aineverforget.ingest import IngestOutcome, ingest_paths
     from aineverforget.run_lock import IngestLockOverlapError
     from pathlib import Path
 
     try:
+        settings = load_settings()
+        probes = None if args.no_verify else (
+            lambda document: _derive_document_probes(document, settings)
+        )
         report = ingest_paths(
             paths=[Path(p) for p in args.paths],
             tags=args.tag if args.tag else None,
             source_id=getattr(args, "source_id", None),
             producer=getattr(args, "producer", "user"),
+            settings=settings,
+            probes=probes,
             require_verify=not args.no_verify,
         )
     except NotImplementedError:
@@ -312,7 +380,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     - topical: query from the document title (or first 10 words of first chunk)
     - specific: query from the first distinctive noun phrase found in a chunk
       (first word ≥ 5 chars from a chunk that is not a stopword)
-    - negative: fixed unrelated query; deferred if corpus has no other docs
+    - negative: fixed unrelated query; deferred if corpus is near-empty
     """
     try:
         from aineverforget.config import load_settings
@@ -354,34 +422,30 @@ def cmd_verify(args: argparse.Namespace) -> int:
         topical_query = title.strip() if title.strip() else " ".join(first_chunk.get("text", "").split()[:10])
 
         # Derive specific probe: first word ≥ 5 chars from any chunk text
-        _STOPWORDS = {"about", "after", "again", "also", "another", "because", "before",
-                      "between", "could", "every", "first", "from", "have", "here", "into",
-                      "more", "most", "other", "over", "same", "should", "some", "such",
-                      "than", "that", "their", "them", "then", "there", "these", "they",
-                      "this", "those", "through", "under", "very", "what", "when", "where",
-                      "which", "while", "with", "would", "your"}
         specific_word: str | None = None
         for chunk in doc_chunks:
-            for word in chunk.get("text", "").split():
-                w = word.strip(".,;:!?\"'()[]{}").lower()
-                if len(w) >= 5 and w not in _STOPWORDS and w.isalpha():
-                    specific_word = word.strip(".,;:!?\"'()[]{}]")
-                    break
+            specific_word = _first_specific_word(chunk.get("text", ""))
             if specific_word:
                 break
 
         probes: list = [
-            Probe(probe_type=ProbeType.topical, query=topical_query),
+            Probe(
+                probe_type=ProbeType.topical,
+                query=topical_query,
+                limit=settings.verify_topical_limit,
+            ),
         ]
         if specific_word:
             probes.append(Probe(
                 probe_type=ProbeType.specific,
                 query=specific_word,
                 expected_substring=specific_word,
+                limit=settings.verify_specific_limit,
             ))
         probes.append(Probe(
             probe_type=ProbeType.negative,
             query="xyzzy_nonexistent_term_for_negative_probe_aineverforget",
+            limit=settings.verify_negative_limit,
         ))
 
         verdict = run_probes(store, args.document_id, generation, probes=probes, embedder=embedder)

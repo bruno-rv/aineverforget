@@ -411,6 +411,46 @@ def test_verify_cold_start_only_active_is_same_doc_defers_negative() -> None:
     assert verdict.probe_results[0].deferred is True
 
 
+def test_verify_near_empty_defers_negative() -> None:
+    """Too few unrelated active docs → negative probe deferred as near-empty."""
+    store = _make_store()
+
+    for idx, (doc_id, text) in enumerate([
+        (DOC_ID_UNRELATED_A, "quantum physics superposition entanglement"),
+        (DOC_ID_UNRELATED_B, "gardening tomatoes compost seedlings"),
+    ]):
+        store.upsert_chunks(
+            [
+                _make_chunk(
+                    document_id=doc_id,
+                    document_sha256=str(idx) * 64,
+                    ingest_state=IngestState.active,
+                    ingest_generation=1,
+                    text=text,
+                )
+            ],
+            [_emb(text)],
+        )
+
+    probes = [
+        Probe(
+            probe_type=ProbeType.negative,
+            query="cooking recipes pasta",
+            limit=10,
+        ),
+    ]
+
+    verdict = run_probes(store, DOC_ID_PENDING, PENDING_GEN, probes, _fake_embedder)
+
+    assert verdict.passed is True
+    assert verdict.index_suspect is False
+    assert verdict.negative_deferred is True
+    negative_r = verdict.probe_results[0]
+    assert negative_r.passed is True
+    assert negative_r.deferred is True
+    assert "insufficient unrelated active Documents" in negative_r.detail
+
+
 # ---------------------------------------------------------------------------
 # Scenario 4: negative probe verdict logic (monkeypatched store.search)
 # In :memory: mode, RRF returns all points regardless of sparse overlap.
@@ -422,20 +462,23 @@ def test_verify_negative_passes_when_pending_absent_from_results(monkeypatch) ->
     """Negative probe passes when pending doc NOT in hybrid search results."""
     store = _make_store()
 
-    # Seed an unrelated active doc so cold-start is NOT triggered
+    # Seed enough unrelated active docs so cold-start/near-empty deferral is NOT triggered.
     unrelated_text = "quantum physics superposition entanglement"
-    store.upsert_chunks(
-        [
+    unrelated_chunks = []
+    unrelated_embeddings = []
+    for idx, doc_id in enumerate([DOC_ID_UNRELATED_A, DOC_ID_UNRELATED_B, "doc-unrelated-gamma"]):
+        text = f"{unrelated_text} {idx}"
+        unrelated_chunks.append(
             _make_chunk(
-                document_id=DOC_ID_UNRELATED_A,
-                document_sha256="l" * 64,
+                document_id=doc_id,
+                document_sha256=str(idx) * 64,
                 ingest_state=IngestState.active,
                 ingest_generation=1,
-                text=unrelated_text,
+                text=text,
             )
-        ],
-        [_emb(unrelated_text)],
-    )
+        )
+        unrelated_embeddings.append(_emb(text))
+    store.upsert_chunks(unrelated_chunks, unrelated_embeddings)
 
     # Mock store.search: negative query returns only the unrelated doc, NOT pending
     def mock_search(query, *, limit=10, view_filter=None, **kwargs):
@@ -472,20 +515,23 @@ def test_verify_negative_fails_when_pending_surfaces(monkeypatch) -> None:
     """Negative probe fails when pending doc appears in hybrid search results."""
     store = _make_store()
 
-    # Seed an unrelated active doc so cold-start is NOT triggered
+    # Seed enough unrelated active docs so cold-start/near-empty deferral is NOT triggered.
     unrelated_text = "quantum physics superposition entanglement"
-    store.upsert_chunks(
-        [
+    unrelated_chunks = []
+    unrelated_embeddings = []
+    for idx, doc_id in enumerate([DOC_ID_UNRELATED_A, DOC_ID_UNRELATED_B, "doc-unrelated-gamma"]):
+        text = f"{unrelated_text} {idx}"
+        unrelated_chunks.append(
             _make_chunk(
-                document_id=DOC_ID_UNRELATED_A,
-                document_sha256="l" * 64,
+                document_id=doc_id,
+                document_sha256=str(idx) * 64,
                 ingest_state=IngestState.active,
                 ingest_generation=1,
-                text=unrelated_text,
+                text=text,
             )
-        ],
-        [_emb(unrelated_text)],
-    )
+        )
+        unrelated_embeddings.append(_emb(text))
+    store.upsert_chunks(unrelated_chunks, unrelated_embeddings)
 
     # Mock store.search: negative query returns BOTH unrelated AND pending doc
     def mock_search(query, *, limit=10, view_filter=None, **kwargs):
