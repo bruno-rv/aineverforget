@@ -122,6 +122,17 @@ def test_ensure_collection_idempotent() -> None:
     assert client.collection_exists(COLLECTION)
 
 
+def test_ensure_collection_uses_configured_dense_dimension() -> None:
+    client = QdrantClient(":memory:")
+    store = QdrantStore(collection_name=COLLECTION, client=client, dense_dim=384)
+
+    store.ensure_collection()
+
+    info = client.get_collection(COLLECTION)
+    vectors = info.config.params.vectors
+    assert vectors["dense"].size == 384
+
+
 # ---------------------------------------------------------------------------
 # upsert_chunks
 # ---------------------------------------------------------------------------

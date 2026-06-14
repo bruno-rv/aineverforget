@@ -128,8 +128,9 @@ RESOLUTION ORDER
 3. `dense_hits = -1`, `sparse_hits = -1` (not applicable for scroll).
 4. `citationable_count` = `candidate_count` (scroll always returns `document_path`).
 5. `ranked_chunks = []` — scroll returns metadata only; no text content to surface.
-6. Gate does not apply. Set `gate_pass: true`, `verdict: "pass"`.
-7. Return FROZEN triple.
+6. Copy the CLI `documents` array into `metadata.documents` so answer-synthesizer can build the list answer from the frozen retriever triple.
+7. Gate does not apply. Set `gate_pass: true`, `verdict: "pass"`.
+8. Return FROZEN triple.
 
 **Output:** `{output, metadata, self_report}` with `search_mode: scroll`.
 

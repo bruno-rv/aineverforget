@@ -13,7 +13,11 @@ from aineverforget.models import IngestState
 
 COLL = "ainf_dbg_v1"
 settings = load_settings(collection=COLL)
-store = QdrantStore(url=settings.qdrant_url, collection_name=COLL)
+store = QdrantStore(
+    url=settings.qdrant_url,
+    collection_name=COLL,
+    dense_dim=settings.embed_dim,
+)
 client = store._get_client()
 try:
     client.delete_collection(COLL)

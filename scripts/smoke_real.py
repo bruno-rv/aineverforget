@@ -52,7 +52,11 @@ def main() -> int:
     check("query dense dim == 1024", len(q.dense) == 1024)
 
     # ---- server setup ----------------------------------------------------
-    store = QdrantStore(url=settings.qdrant_url, collection_name=COLL)
+    store = QdrantStore(
+        url=settings.qdrant_url,
+        collection_name=COLL,
+        dense_dim=settings.embed_dim,
+    )
     client = store._get_client()
     try:
         client.delete_collection(COLL)

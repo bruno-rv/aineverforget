@@ -107,6 +107,7 @@ def _run_case(case: dict) -> bool:
         gate_result = {}
 
     field_checks = {
+        "all_claims_cited": expected.get("all_claims_cited"),
         "all_cited_ids_in_input": expected.get("all_cited_ids_in_input"),
         "groundedness_pass": expected.get("groundedness_pass"),
         "coverage_ledger_consistent": expected.get("coverage_ledger_consistent"),

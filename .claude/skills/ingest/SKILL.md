@@ -68,14 +68,16 @@ For each validated path, determine dispatch mode before invoking any agent.
 
 **Pre-structured → skip note-summarizer:**
 - Path ends in `.pdf` → **direct** (knowledge-indexer only).
+- Path basename is `summary.md` → **direct**.
+- Path ends in `.md` or `.txt` and contains both `## TL;DR` and `## Key Concepts` → **direct**.
 - Path ends in `.md` or `.txt` → run:
   ```bash
-  grep -cE "^## (TL;DR|Key Concepts|Key Decisions|Action Items)" "<path>"
+  grep -cE "^## " "<path>"
   ```
-  Count ≥ 4 → **direct**. Count < 4 → **raw note**.
+  Count ≥ 3 → **direct**. Count < 3 → **raw note**.
 
 **Raw note/transcript → needs summarization:**
-- `.md` / `.txt` file where the grep count < 4 → dispatch note-summarizer first.
+- `.md` / `.txt` file where the section count < 3 and it is not a generated summary → dispatch note-summarizer first.
 
 Record classification per path. Then process each path through its dispatch sequence (STEP 2–3).
 

@@ -70,7 +70,9 @@ not a quality gate.
 
 **Hard rule:** Never use `scroll` to answer content questions ("how many times did I write X"). Never use `lexscan` to answer metadata questions ("which sources are tagged Y").
 
-Record `ask_type` as one of: `recall` | `synthesis` | `enumeration_metadata` | `enumeration_content`.
+Record synthesizer `ask_type` as one of: `recall` | `synthesis` | `enumeration`.
+For enumeration, also record `enumeration_mode` as `metadata` or `content`; this mode
+controls retriever dispatch only and is never sent as `ask_type` to answer-synthesizer.
 
 ```bash
 python3 scripts/run_journal.py ASK_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --question "<question>" --ask-type "<ask_type>"
@@ -115,12 +117,12 @@ For each sub-query (or the single query for Recall/Enumeration):
   dispatches_used += 1
 ```
 
-| `ask_type` | `query_type` | `search_mode` |
-|------------|-------------|---------------|
+| `ask_type` / mode | `query_type` | `search_mode` |
+|-------------------|-------------|---------------|
 | recall | `recall` | `hybrid` |
 | synthesis sub-query | `synthesis_sub` | `hybrid` |
-| enumeration_metadata | `enumeration_metadata` | `scroll` |
-| enumeration_content | `enumeration_content` | `lexscan` |
+| enumeration + `enumeration_mode=metadata` | `enumeration_metadata` | `scroll` |
+| enumeration + `enumeration_mode=content` | `enumeration_content` | `lexscan` |
 
 ```bash
 python3 scripts/run_journal.py DISPATCH_START --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>" --dispatches-used <dispatches_used>
@@ -173,7 +175,9 @@ sys.exit(0 if ok else 1)
 python3 scripts/run_journal.py GATE_PASS --run-id "$(cat "$_AINF_RUN_ID_FILE")" --agent knowledge-retriever --sub-query-id "<sub_query_id>"
 ```
 
-Collect `output.ranked_chunks` for this sub-query.
+Collect `output.ranked_chunks` for this sub-query. For metadata enumeration, also
+carry `metadata.documents` from the retriever result into the answer-synthesizer
+dispatch metadata.
 
 **On gate fail (exit 1):**
 ```bash
@@ -222,17 +226,20 @@ for retriever_result in retriever_results_in_order:
             deduped_chunks.append(chunk)
 ```
 
-**Build coverage ledger** from retriever self_reports:
+**Build coverage ledger** from final post-gate retriever outputs:
 ```python
 coverage_ledger = {}
 for sub_query_id, result in enumerate(retriever_results):
-    sr = result["self_report"]
+    ranked_chunks = result["output"].get("ranked_chunks", [])
     coverage_ledger[sub_queries[sub_query_id]] = (
-        "answered" if sr["candidate_count"] >= 1 else "empty"
+        "answered" if len(ranked_chunks) >= 1 else "empty"
     )
 ```
 
-This is the **skill's authoritative ledger** — built from observed candidate counts, not from the synthesizer's self-assessment.
+This is the **skill's authoritative ledger** — built from final chunks available
+for synthesis, not from raw pre-gate candidate counts or the synthesizer's
+self-assessment. If Two-Strike terminates a sub-query with empty ranked_chunks,
+the ledger entry is `"empty"` even if earlier attempts had candidates.
 
 For Recall and Enumeration: `deduped_chunks` = the single retriever's `ranked_chunks`. Coverage ledger is not applicable.
 
@@ -245,9 +252,10 @@ For Recall and Enumeration: `deduped_chunks` = the single retriever's `ranked_ch
   Agent:    .claude/agentspec/agents/dev/answer-synthesizer.md
   Input:
     question:          <original question>
-    ask_type:          <recall|synthesis|enumeration_metadata|enumeration_content>
+    ask_type:          <recall|synthesis|enumeration>
     ranked_chunks:     <deduped_chunks list>
     sub_query_ledger:  <coverage_ledger dict or null>
+    metadata.documents:<scroll documents list for metadata enumeration, otherwise omitted>
   Model:    sonnet
   dispatches_used += 1
 ```
@@ -280,8 +288,8 @@ python3 -c "import json; print(json.dumps(<full_synth_result>))" > /tmp/ainf_syn
 ## STEP 4a — ANSWER-SYNTHESIZER GATE
 
 **Critical:** Do NOT trust the agent's self_report booleans directly. The skill
-must recompute `all_cited_ids_in_input` and `groundedness_pass` via the gate
-script, and verify `coverage_ledger_consistent` independently.
+must recompute `all_claims_cited`, `all_cited_ids_in_input`, `groundedness_pass`,
+and `coverage_ledger_consistent` via the gate script.
 (See Phase C note in `.claude/agentspec/shared/self-report-contract.md`.)
 
 Run the gate script:
@@ -290,9 +298,10 @@ python3 scripts/gate_synthesis.py /tmp/ainf_synth_output.json /tmp/ainf_synth_ch
 ```
 
 The script:
-1. Joins `citations[*].chunk_id` against the skill-retained `ranked_chunks[*].point_id` → `all_cited_ids_in_input`
-2. Checks lexical overlap between each claim and its cited chunk text → `groundedness_pass`
-3. Verifies that any "empty" sub-query in `sub_query_ledger` forces `coverage_verdict="partial"` and non-null `qualification` → `coverage_ledger_consistent`
+1. Checks that every factual answer sentence is covered by a citation claim → `all_claims_cited`
+2. Joins `citations[*].chunk_id` against the skill-retained `ranked_chunks[*].point_id` → `all_cited_ids_in_input`
+3. Checks lexical overlap between each claim and its cited chunk text → `groundedness_pass`
+4. Verifies that any "empty" sub-query in `sub_query_ledger` forces `coverage_verdict="partial"` and non-null `qualification` → `coverage_ledger_consistent`
 
 Outputs JSON diagnostic to stdout. Routes on exit code:
 

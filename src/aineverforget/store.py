@@ -4,7 +4,7 @@ Collection schema (per PLAN.md § Phase A, items 5–6 and ADR-0002)
 ------------------------------------------------------------------
 Collection name:   ``ainf_corpus_bgem3_v1`` (versioned — per settings).
 Vectors:
-    ``"dense"``  — VectorParams(size=1024, distance=COSINE)
+    ``"dense"``  — VectorParams(size=dense_dim, distance=COSINE)
     ``"sparse"`` — SparseVectorParams() (for BGE-M3 lexical weights)
 
 Payload indexes (created by ``ensure_collection()``):
@@ -61,10 +61,12 @@ class QdrantStore:
         *,
         url: str = "http://127.0.0.1:6333",
         collection_name: str = "ainf_corpus_bgem3_v1",
+        dense_dim: int = 1024,
         client: Any | None = None,
     ) -> None:
         self.url = url
         self.collection_name = collection_name
+        self.dense_dim = dense_dim
         self._client = client  # None = lazy-init on first use
 
     # ------------------------------------------------------------------
@@ -78,7 +80,7 @@ class QdrantStore:
         already exist.
 
         Collection layout:
-        - vectors_config: ``{"dense": VectorParams(size=1024, distance=COSINE)}``
+        - vectors_config: ``{"dense": VectorParams(size=dense_dim, distance=COSINE)}``
         - sparse_vectors_config: ``{"sparse": SparseVectorParams()}``
 
         Payload indexes created (all idempotent):
@@ -102,7 +104,7 @@ class QdrantStore:
             client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
-                    "dense": m.VectorParams(size=1024, distance=m.Distance.COSINE)
+                    "dense": m.VectorParams(size=self.dense_dim, distance=m.Distance.COSINE)
                 },
                 sparse_vectors_config={
                     "sparse": m.SparseVectorParams()
