@@ -1,0 +1,166 @@
+schema_version: 1
+
+# Fixture schema: gate_synthesis.py unit test cases (deterministic)
+# LLM-judge cases (faithfulness/answer-relevance via RAGAS) are Phase D v1.1
+# — not included until RAGAS dep and judge API key confirmed with user
+# Run: python3 scripts/eval_gate_synthesis.py
+
+cases:
+  # --- gate: all_cited_ids_in_input ---
+  - id: gate_cited_ids_pass
+    description: "All citation chunk_ids present in ranked_chunks"
+    synth_output:
+      output:
+        answer: "Blue-green deployment was chosen."
+        citations:
+          - claim: "Blue-green deployment was chosen."
+            chunk_id: "aaaa0000-0000-0000-0000-000000000001"
+            document_path: "tests/eval/corpus/note_raw_transcript.md"
+            title: "DataSync Migration"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "complete"
+        qualification: null
+      metadata:
+        question: "What migration strategy was chosen?"
+        ask_type: "recall"
+        input_chunk_count: 1
+        sub_query_ledger: {}
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "aaaa0000-0000-0000-0000-000000000001"
+        text: "The team chose blue-green deployment strategy for the DataSync migration to minimize downtime."
+        document_id: "6131b682-d4c2-5c9e-a78b-7d35067e0b12"
+    expected:
+      exit_code: 0
+      all_cited_ids_in_input: true
+      groundedness_pass: true
+      coverage_ledger_consistent: true
+
+  - id: gate_cited_ids_fail
+    description: "Citation chunk_id not in ranked_chunks → gate fail"
+    synth_output:
+      output:
+        answer: "Blue-green deployment was chosen."
+        citations:
+          - claim: "Blue-green deployment was chosen."
+            chunk_id: "bbbb1111-0000-0000-0000-000000000002"  # not in chunks
+            document_path: "tests/eval/corpus/note_raw_transcript.md"
+            title: "DataSync Migration"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "complete"
+        qualification: null
+      metadata:
+        question: "What migration strategy was chosen?"
+        ask_type: "recall"
+        input_chunk_count: 1
+        sub_query_ledger: {}
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "aaaa0000-0000-0000-0000-000000000001"
+        text: "The team chose blue-green deployment strategy."
+        document_id: "6131b682-d4c2-5c9e-a78b-7d35067e0b12"
+    expected:
+      exit_code: 1
+      all_cited_ids_in_input: false
+
+  # --- gate: groundedness_pass ---
+  - id: gate_groundedness_fail
+    description: "Claim has no key-term overlap with cited chunk → gate fail"
+    synth_output:
+      output:
+        answer: "Pinecone was selected for the vector store."
+        citations:
+          - claim: "Pinecone was selected for the vector store."
+            chunk_id: "cccc2222-0000-0000-0000-000000000003"
+            document_path: "tests/eval/corpus/note_prestructured.md"
+            title: "VectorCore ADR"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "complete"
+        qualification: null
+      metadata:
+        question: "Which vector store was chosen?"
+        ask_type: "recall"
+        input_chunk_count: 1
+        sub_query_ledger: {}
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "cccc2222-0000-0000-0000-000000000003"
+        text: "Qdrant was chosen for on-premise data control. bge-m3 model provides dense and sparse embeddings."
+        document_id: "b39899a7-6a26-5ed7-a6d3-85c27a21119c"
+    expected:
+      exit_code: 1
+      groundedness_pass: false
+
+  # --- gate: coverage_ledger_consistent ---
+  - id: gate_coverage_ledger_pass
+    description: "Empty sub-query with partial verdict + qualification → pass"
+    synth_output:
+      output:
+        answer: "The migration will use blue-green deployment."
+        citations:
+          - claim: "The migration will use blue-green deployment."
+            chunk_id: "dddd3333-0000-0000-0000-000000000004"
+            document_path: "tests/eval/corpus/note_raw_transcript.md"
+            title: "DataSync Migration"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "partial"
+        qualification: "Could not find information about rate limiting in available notes."
+      metadata:
+        question: "What are the migration and rate limiting plans?"
+        ask_type: "synthesis"
+        input_chunk_count: 1
+        sub_query_ledger:
+          "database migration plan": "answered"
+          "rate limiting plan": "empty"
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "dddd3333-0000-0000-0000-000000000004"
+        text: "Blue-green deployment strategy chosen for DataSync migration."
+        document_id: "6131b682-d4c2-5c9e-a78b-7d35067e0b12"
+    expected:
+      exit_code: 0
+      coverage_ledger_consistent: true
+
+  - id: gate_coverage_ledger_fail
+    description: "Empty sub-query but coverage_verdict=complete → gate fail"
+    synth_output:
+      output:
+        answer: "The migration will use blue-green deployment."
+        citations:
+          - claim: "The migration will use blue-green deployment."
+            chunk_id: "eeee4444-0000-0000-0000-000000000005"
+            document_path: "tests/eval/corpus/note_raw_transcript.md"
+            title: "DataSync Migration"
+            heading_path: null
+            pdf_page: null
+            producer: "user"
+        coverage_verdict: "complete"  # WRONG — should be "partial" when ledger has empty
+        qualification: null
+      metadata:
+        question: "What are the migration and rate limiting plans?"
+        ask_type: "synthesis"
+        input_chunk_count: 1
+        sub_query_ledger:
+          "database migration plan": "answered"
+          "rate limiting plan": "empty"
+      self_report:
+        verdict: pass
+    ranked_chunks:
+      - point_id: "eeee4444-0000-0000-0000-000000000005"
+        text: "Blue-green deployment strategy chosen for DataSync migration."
+        document_id: "6131b682-d4c2-5c9e-a78b-7d35067e0b12"
+    expected:
+      exit_code: 1
+      coverage_ledger_consistent: false

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aineverforget"
+version = "0.1.0"
+description = "Local-first, eval-gated personal knowledge brain with hybrid vector search."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2,<3",
+    "qdrant-client>=1.15,<2",
+    "FlagEmbedding",
+    "pypdf",
+    "pdfplumber",
+    "mistune>=3,<4",
+]
+
+[project.scripts]
+aineverforget = "aineverforget.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.24,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aineverforget"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
