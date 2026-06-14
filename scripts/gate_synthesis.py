@@ -121,6 +121,15 @@ def check_all_claims_cited(
     if not citation_claims:
         return False, answer_claims
 
+    if ask_type == "enumeration":
+        answer_tokens = _tokens(" ".join(answer_claims))
+        unrepresented = []
+        for claim in citation_claims:
+            claim_tokens = _tokens(claim)
+            if claim_tokens and not claim_tokens.issubset(answer_tokens):
+                unrepresented.append(claim)
+        return len(unrepresented) == 0, unrepresented
+
     citation_token_sets = [_tokens(claim) for claim in citation_claims]
     uncited = []
     for claim in answer_claims:

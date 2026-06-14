@@ -61,6 +61,7 @@ No heavy imports at module level.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -303,6 +304,11 @@ def ingest_paths(
 
     _tags = tags or []
     report = IngestReport(total_paths=len(paths))
+    source_path_components = (
+        _source_override_path_components(paths)
+        if source_id is not None and len(paths) > 1
+        else {}
+    )
 
     # Step 0: Acquire single-writer lock around ALL paths
     with IngestLock(session_id=session_id, run_dir=run_dir):
@@ -311,6 +317,7 @@ def ingest_paths(
             result = _ingest_one_path(
                 path=path,
                 path_count=len(paths),
+                path_component=source_path_components.get(path.resolve()),
                 source_id=source_id,
                 producer=producer,
                 settings=settings,
@@ -350,6 +357,7 @@ def _ingest_one_path(
     *,
     path: Path,
     path_count: int,
+    path_component: str | None,
     source_id: str | None,
     producer: str,
     settings: object,
@@ -417,6 +425,7 @@ def _ingest_one_path(
                     document_index=index,
                     document_count=document_count,
                     path_count=path_count,
+                    path_component=path_component,
                 )
                 updates["source_id"] = path_source_id
                 updates["document_path"] = document_path
@@ -725,17 +734,43 @@ def _source_override_document_path(
     document_index: int,
     document_count: int,
     path_count: int,
+    path_component: str | None,
 ) -> str:
     """Return the logical document_path to pair with an explicit source_id."""
     if path_count == 1 and document_count == 1:
         return source_id
 
-    component = Path(str(getattr(document, "document_path", "") or path.name)).name
+    component = path_component
+    if component is None:
+        component = Path(str(getattr(document, "document_path", "") or path.name)).name
     if not component:
         component = path.name
     if document_count > 1:
         component = f"{component}#document-{document_index + 1}"
     return f"{source_id.rstrip('/')}/{component}"
+
+
+def _source_override_path_components(paths: list[Path]) -> dict[Path, str]:
+    """Return stable relative components for multi-path source_id overrides."""
+    resolved_paths = [path.resolve() for path in paths]
+    try:
+        common_parent = Path(
+            os.path.commonpath([str(path.parent) for path in resolved_paths])
+        )
+    except ValueError:
+        common_parent = None
+
+    components: dict[Path, str] = {}
+    for resolved in resolved_paths:
+        if common_parent is not None:
+            try:
+                component = resolved.relative_to(common_parent).as_posix()
+            except ValueError:
+                component = resolved.name
+        else:
+            component = resolved.as_posix().lstrip("/")
+        components[resolved] = component or resolved.name
+    return components
 
 
 def _get_active_sha(store: object, document_id: str) -> str | None:
