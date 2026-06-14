@@ -1,0 +1,55 @@
+name: Eval Harness
+
+on:
+  push:
+    paths:
+      - 'src/aineverforget/chunking.py'
+      - 'src/aineverforget/embedding.py'
+      - 'scripts/gate_synthesis.py'
+      - 'scripts/eval_*.py'
+      - 'scripts/eval_scorers.py'
+      - '.claude/agentspec/agents/dev/**'
+      - 'tests/eval/fixtures/**'
+      - 'tests/eval/corpus/**'
+  pull_request:
+    paths:
+      - 'src/aineverforget/chunking.py'
+      - 'src/aineverforget/embedding.py'
+      - 'scripts/gate_synthesis.py'
+      - 'scripts/eval_*.py'
+      - '.claude/agentspec/agents/dev/**'
+      - 'tests/eval/fixtures/**'
+
+jobs:
+  eval-deterministic:
+    name: Deterministic Eval (no Qdrant)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Scorer unit tests
+        run: python3 scripts/eval_scorers.py
+      - name: Gate synthesis fixture tests
+        run: python3 scripts/eval_gate_synthesis.py
+
+  eval-integration:
+    name: Integration Eval (live Qdrant)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # manual only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Start Qdrant
+        run: |
+          docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+          sleep 5
+      - name: Install package
+        run: pip install -e . pyyaml
+      - name: Ingest corpus + run retrieval eval
+        run: python3 scripts/eval_retrieval.py --ingest
