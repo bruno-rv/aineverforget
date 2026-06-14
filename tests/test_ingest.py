@@ -1127,7 +1127,8 @@ def test_source_id_override_recomputes_document_id(tmp_path):
     Asserts:
     - source_id on chunks == "custom://source-x"
     - producer on chunks == "agent"
-    - document_id on chunks == identity.make_document_id("custom://source-x", document_path)
+    - document_id on chunks == identity.make_document_id(source_id, source_id)
+      (stable: source_id used for both args so document_id is cross-machine portable)
     """
     from aineverforget import identity
 
@@ -1159,11 +1160,12 @@ def test_source_id_override_recomputes_document_id(tmp_path):
     assert report.success_count == 1
     doc_id = report.results[0].document_id
 
-    # Expected document_id after fix: derived from custom source_id + document_path
-    expected_doc_id = identity.make_document_id(custom_source_id, str(md_path))
+    # When source_id is overridden, document_id = UUIDv5(NS, "{source_id}|{source_id}")
+    # — stable across machines regardless of where the file lives on disk.
+    expected_doc_id = identity.make_document_id(custom_source_id, custom_source_id)
     assert doc_id == expected_doc_id, (
         f"document_id {doc_id!r} != expected {expected_doc_id!r}; "
-        "Fix B must recompute document_id from overridden source_id"
+        "source_id override must produce stable cross-machine document_id"
     )
 
     # Verify all active chunks carry the right source_id, producer, document_id

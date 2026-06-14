@@ -77,7 +77,7 @@ def _load_fixtures(fixtures_path: Path) -> list[dict]:
 
 def _run_ingest(corpus_dir: Path) -> bool:
     """Ingest all .md files in corpus_dir using stable repo-relative source_ids."""
-    md_files = sorted(corpus_dir.glob("*.md"))
+    md_files = sorted(corpus_dir.glob("note_*.md"))
     if not md_files:
         print(f"ERROR: no .md files found in corpus directory: {corpus_dir}", file=sys.stderr)
         return False
@@ -89,12 +89,12 @@ def _run_ingest(corpus_dir: Path) -> bool:
         sid = f"tests/eval/corpus/{f.name}"
         print(f"  ingest {f.name} (source-id={sid})")
         proc = subprocess.run(
-            ["aineverforget", "ingest", "--source-id", sid, "--json", str(f)],
+            ["aineverforget", "ingest", "--source-id", sid, "--no-verify", "--json", str(f)],
             capture_output=True,
             text=True,
         )
         if proc.returncode not in (0, 4):
-            print(f"  ERROR: ingest failed (exit {proc.returncode}): {proc.stderr.strip()[:200]}")
+            print(f"  ERROR: ingest failed (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip()[:300]}")
             all_ok = False
         else:
             try:
@@ -112,8 +112,8 @@ def _run_hybrid_case(case: dict, k_values: list[int]) -> bool:
     query = case.get("query", "")
     expected = case.get("expected", {})
     relevant_ids: set[str] = set(expected.get("relevant_document_ids", []))
-    thresholds: dict[str, float] = expected.get("recall_thresholds", {})
-    mrr_threshold: float | None = expected.get("mrr_threshold")
+    thresholds: dict[str, float] = expected.get("thresholds", {})
+    mrr_threshold: float | None = expected.get("min_mrr")
 
     proc = subprocess.run(
         ["aineverforget", "search", "--json", query],
@@ -142,7 +142,7 @@ def _run_hybrid_case(case: dict, k_values: list[int]) -> bool:
     for k in k_values:
         score = recall_at_k(ranked_doc_ids, relevant_ids, k)
         threshold_key = f"recall@{k}"
-        threshold = thresholds.get(threshold_key)
+        threshold = thresholds.get(f"recall_at_{k}")
         if threshold is not None and score < threshold:
             passed = False
             detail_lines.append(
@@ -166,7 +166,7 @@ def _run_hybrid_case(case: dict, k_values: list[int]) -> bool:
 def _run_lexscan_case(case: dict) -> bool:
     """Run a lexscan case. Returns True if total_hits >= expected min_hits."""
     case_id = case.get("id", "unknown")
-    term = case.get("term", "")
+    term = case.get("query", case.get("term", ""))
     expected = case.get("expected", {})
     min_hits: int = expected.get("min_hits", 0)
 
@@ -244,7 +244,7 @@ def main() -> int:
     fail_count = 0
 
     for case in cases:
-        case_type = case.get("type", "hybrid")
+        case_type = case.get("search_mode", case.get("type", "hybrid"))
         if case_type == "lexscan":
             ok = _run_lexscan_case(case)
         else:

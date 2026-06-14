@@ -105,10 +105,12 @@ Key decisions:
 - Coverage ledger built from retriever `candidate_count` (authoritative) not synthesizer self-report
 - Groundedness gate: tokenize claim + chunk text, filter stopwords, require ≥1 shared non-stopword token; deterministic, no NLI model (v1.1 upgrade per PLAN.md risk #4)
 
-## Phase D — Dev-time Eval Harness — COMPLETE
+## Phase D — Dev-time Eval Harness — COMPLETE + integration-validated
 
 > Status: **13 files** — frozen mini-corpus (3 notes + README), 4 fixture YAMLs, 4 eval scripts, 1 CI workflow.
-> Deterministic runners smoke-tested: **7/7 scorer self-tests pass**, **5/5 gate synthesis fixture cases pass**.
+> Deterministic runners: **7/7 scorer self-tests pass**, **5/5 gate synthesis fixture cases pass**.
+> Integration eval (live Qdrant + bge-m3): **5/5 retrieval cases pass** (3 hybrid recall@1/MRR=1.0, 2 lexscan min_hits met).
+> 341 unit tests still pass after ingest.py fix.
 
 Files:
 - `tests/eval/corpus/` — 3 frozen .md notes (note_raw_transcript.md, note_prestructured.md, note_technical.md) + README
@@ -131,6 +133,13 @@ Key decisions:
 - **RAGAS deferred**: LLM-judge faithfulness/answer-relevance are Phase D v1.1 — not added until dep + API key confirmed with user; deterministic metrics (recall@k/MRR + gate_synthesis.py unit tests) ship as the runnable backbone
 - **Integration eval is manual-dispatch only in CI**: `--ingest` flag + `eval_retrieval.py` documented but gated behind `workflow_dispatch` event (requires live Qdrant + FlagEmbedding model loaded)
 - **CI triggers**: push/PR on `chunking.py`, `embedding.py`, `gate_synthesis.py`, agent dev files, fixtures, corpus — exactly the set of changes that can invalidate eval results
+
+Bugs found and fixed during integration run:
+- **`--source-id` document_id not portable** (`ingest.py`): `make_document_id(path_source_id, d.document_path)` used the abs path as document_path, making document_id machine-specific. Fixed: `make_document_id(path_source_id, path_source_id)` — source_id used for both, matching `UUIDv5(NS, f"{sid}|{sid}")` formula; 341 tests still pass.
+- **eval_retrieval.py glob included README.md**: changed `*.md` → `note_*.md` to exclude the freeze-warning README from ingest.
+- **eval_retrieval.py threshold keys mismatched**: fixture uses `recall_at_1`/`min_mrr`; code was looking for `recall@1`/`mrr_threshold` → thresholds never enforced. Fixed key lookups.
+- **eval_retrieval.py lexscan routing**: `case.get("type")` but fixture uses `search_mode` → lexscan cases routed as hybrid. Fixed to check `search_mode` first.
+- **eval_retrieval.py lexscan term key**: `case.get("term")` but fixture uses `query` → term always empty string. Fixed to fall back to `query`.
 
 ## Next phases (per PLAN.md)
 - E: observability (Run Journal JSONL+SQLite, Cost Telemetry — required for skill journal/telemetry forward-refs to become functional).

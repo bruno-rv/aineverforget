@@ -395,16 +395,18 @@ def _ingest_one_path(
             )
 
         # Apply caller overrides to ALL loaded documents.
-        # source_id override must also recompute document_id (document_id is
-        # derived from source_id + document_path via identity.make_document_id),
-        # otherwise source_id and document_id disagree and point_ids drift.
+        # When --source-id is given it acts as a stable, cross-machine identifier;
+        # use it for both source_id and document_path in the document_id computation
+        # so that document_id = UUIDv5(NS, f"{source_id}|{source_id}") — stable
+        # regardless of the absolute file path on the current machine.
         rewritten = []
         for d in documents:
             updates: dict = {"producer": producer}
             if source_id is not None:
                 updates["source_id"] = path_source_id
+                updates["document_path"] = path_source_id
                 updates["document_id"] = identity_mod.make_document_id(
-                    path_source_id, d.document_path
+                    path_source_id, path_source_id
                 )
             rewritten.append(d.model_copy(update=updates))
         documents = rewritten
