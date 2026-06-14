@@ -105,7 +105,33 @@ Key decisions:
 - Coverage ledger built from retriever `candidate_count` (authoritative) not synthesizer self-report
 - Groundedness gate: tokenize claim + chunk text, filter stopwords, require ≥1 shared non-stopword token; deterministic, no NLI model (v1.1 upgrade per PLAN.md risk #4)
 
+## Phase D — Dev-time Eval Harness — COMPLETE
+
+> Status: **13 files** — frozen mini-corpus (3 notes + README), 4 fixture YAMLs, 4 eval scripts, 1 CI workflow.
+> Deterministic runners smoke-tested: **7/7 scorer self-tests pass**, **5/5 gate synthesis fixture cases pass**.
+
+Files:
+- `tests/eval/corpus/` — 3 frozen .md notes (note_raw_transcript.md, note_prestructured.md, note_technical.md) + README
+  - Topics: DataSync PostgreSQL migration, VectorCore Qdrant ADR, APIGateway rate limiting
+  - Corpus is **byte-frozen** — content changes rotate document_sha256 → rotate point_ids → invalidate retrieval gold
+- `tests/eval/fixtures/` — 4 YAML fixture files per agent
+  - `note_summarizer.yaml` — structure checks, required sections, entity list, compression bounds
+  - `knowledge_indexer.yaml` — stable document_ids (pre-computed UUIDv5), probe verdict expectations
+  - `knowledge_retriever.yaml` — gold Q→document_id mappings for recall@1/3/5 + MRR; lexscan min_hits cases
+  - `answer_synthesizer.yaml` — 5 gate_synthesis.py cases (cited IDs, groundedness, coverage ledger: 2 pass + 3 fail)
+- `scripts/eval_scorers.py` — recall@k / MRR metrics; pure Python stdlib; 7 self-tests pass standalone
+- `scripts/eval_gate_synthesis.py` — runs gate_synthesis.py against answer_synthesizer.yaml; 5/5 cases pass
+- `scripts/eval_note_summarizer.py` — validates saved note-summarizer output JSON against fixture (structural + entity checks)
+- `scripts/eval_retrieval.py` — integration eval (needs live Qdrant); `--ingest` flag uses `--source-id` for stable document_ids
+- `.github/workflows/eval.yml` — CI: deterministic job (no Qdrant, runs on push); integration job (manual dispatch, docker Qdrant)
+
+Key decisions:
+- **document_id stability**: eval uses repo-relative `--source-id tests/eval/corpus/<file>.md` for stable cross-machine IDs
+- **document_id vs point_id in gold**: recall gold keys on `document_id` (path-stable, survives chunker changes); point_id would rotate on content/chunker change (one of the CI triggers)
+- **RAGAS deferred**: LLM-judge faithfulness/answer-relevance are Phase D v1.1 — not added until dep + API key confirmed with user; deterministic metrics (recall@k/MRR + gate_synthesis.py unit tests) ship as the runnable backbone
+- **Integration eval is manual-dispatch only in CI**: `--ingest` flag + `eval_retrieval.py` documented but gated behind `workflow_dispatch` event (requires live Qdrant + FlagEmbedding model loaded)
+- **CI triggers**: push/PR on `chunking.py`, `embedding.py`, `gate_synthesis.py`, agent dev files, fixtures, corpus — exactly the set of changes that can invalidate eval results
+
 ## Next phases (per PLAN.md)
-- D: dev-time eval system (gold fixtures + RAGAS + cross-model judge in CI).
 - E: observability (Run Journal JSONL+SQLite, Cost Telemetry — required for skill journal/telemetry forward-refs to become functional).
 - F: supervised live dry-run on real Qdrant + sign-off.

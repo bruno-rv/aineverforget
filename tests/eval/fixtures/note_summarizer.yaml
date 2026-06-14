@@ -1,0 +1,26 @@
+schema_version: 1
+
+# Fixture schema: input + expected gate fields for note-summarizer
+# Run: python3 scripts/eval_note_summarizer.py
+
+cases:
+  - id: raw_transcript
+    input:
+      source_path: tests/eval/corpus/note_raw_transcript.md
+    expected:
+      required_sections:
+        - "## TL;DR"
+        - "## Key Concepts"
+        - "## Key Decisions"
+        - "## Action Items"
+      missing_sections: []
+      compression_ratio_bounds:
+        min: 0.05
+        max: 0.95
+      must_contain_entities:
+        - "Alice Chen"
+        - "blue-green"
+        - "DataSync"
+      missing_entities: []
+      structure_present: true
+      compression_in_bounds: true
