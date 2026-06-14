@@ -62,9 +62,31 @@ Modules (`src/aineverforget/`):
 4. Dev-time eval harness (RAGAS/gold), Run Journal + Cost Telemetry observability, and the
    AgentSpec agents/skills are Phases B–E — not yet built.
 
+## Phase B — AgentSpec agents + Knowledge Bases — COMPLETE
+
+> Status: **27 files** written across 4 agents, 4 KB domains, shared contract, registry, KB index.
+
+Built via parallel sonnet agents; schema frozen before build to prevent drift; verified post-hoc.
+
+Files:
+- `.claude/agentspec/agents/dev/` — `note-summarizer.md`, `knowledge-indexer.md`,
+  `knowledge-retriever.md`, `answer-synthesizer.md`
+- `.claude/agentspec/kb/` — 4 domains × 5 files each (index, quick-reference, 1 concept,
+  1 pattern, 1 troubleshooting) = 20 KB files
+- `.claude/agentspec/shared/self-report-contract.md` — frozen schema + gate table for all 4 agents
+- `.claude/agentspec/kb/_index.yaml` — KB domain index
+- `.claude/rules/agent-registry.md` — routing rules, failure table, Two-Strike rule
+
+Key decisions:
+- `verify` CLI arg is positional (`aineverforget verify <document_id> --json`), not `--document-id`
+- knowledge-retriever gate applies only to recall/synthesis_sub; lexscan/scroll always `gate_pass=true`
+- answer-synthesizer gates are declarative booleans in `self_report` (no Bash sys.exit); skill recomputes
+- Judgment fields (`groundedness_pass`, `all_claims_cited` etc.) annotated: skill must recompute from
+  citations join — must NOT gate blindly on agent's booleans (Phase C note in contract)
+- Contract typo fixed: `"failed"` → `"error"` in knowledge-indexer gate (real outcomes: success/no_op/
+  index_suspect/error/skipped)
+
 ## Next phases (per PLAN.md)
-- B: AgentSpec agents (note-summarizer, knowledge-indexer, knowledge-retriever,
-  answer-synthesizer) + KBs under `.claude/agentspec/`; agent-registry.
 - C: orchestrator skills `/ingest` `/ask`.
 - D: dev-time eval system (gold fixtures + RAGAS + cross-model judge in CI).
 - E: observability (Run Journal JSONL+SQLite, Cost Telemetry).
