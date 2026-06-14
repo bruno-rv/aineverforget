@@ -1,0 +1,76 @@
+domains:
+  note-summarization:
+    name: Note Summarization
+    description: Patterns for transforming raw notes and transcripts into structured
+      summary.md files optimized for per-section embedding. Covers template, compression
+      rules, entity extraction, and the upstream/downstream agent contract.
+    path: note-summarization/
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: summarization-contract
+        path: concepts/summarization-contract.md
+    patterns:
+      - name: summary-template
+        path: patterns/summary-template.md
+    reference:
+      - name: troubleshooting
+        path: reference/troubleshooting.md
+
+  knowledge-indexing:
+    name: Knowledge Indexing
+    description: Patterns for driving the aineverforget ingest CLI, reading probe
+      verdicts from verify output, and populating the knowledge-indexer self_report.
+      Covers cold-start rules, index_suspect handling, and probe calibration.
+    path: knowledge-indexing/
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: ingest-contract
+        path: concepts/ingest-contract.md
+    patterns:
+      - name: probe-calibration
+        path: patterns/probe-calibration.md
+    reference:
+      - name: troubleshooting
+        path: reference/troubleshooting.md
+
+  knowledge-retrieval:
+    name: Knowledge Retrieval
+    description: Patterns for driving hybrid search, lexscan, and scroll commands;
+      evaluating the retriever Quality Gate on pre-fusion per-modality counts;
+      query reformulation strategy; and sub_query_id contract for synthesis fan-out.
+    path: knowledge-retrieval/
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: query-contract
+        path: concepts/query-contract.md
+    patterns:
+      - name: query-reformulation
+        path: patterns/query-reformulation.md
+    reference:
+      - name: troubleshooting
+        path: reference/troubleshooting.md
+
+  answer-synthesis:
+    name: Answer Synthesis
+    description: Patterns for grounding claims in chunk text, inline citation format,
+      coverage_verdict and ledger consistency, dedup across synthesis sub-queries,
+      and refusal contract when no chunk supports the answer.
+    path: answer-synthesis/
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: answer-contract
+        path: concepts/answer-contract.md
+    patterns:
+      - name: citation-contract
+        path: patterns/citation-contract.md
+    reference:
+      - name: troubleshooting
+        path: reference/troubleshooting.md

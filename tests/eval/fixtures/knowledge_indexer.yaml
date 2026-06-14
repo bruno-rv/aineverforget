@@ -1,0 +1,34 @@
+schema_version: 1
+
+# Fixture schema: expected document_ids and probe outcomes after ingest
+# Ingest command: aineverforget ingest --source-id tests/eval/corpus/<file>.md <abs_path> --json
+# document_id is UUIDv5(NS, "{source_id}|{source_id}") — stable iff source-id arg is constant
+
+cases:
+  - id: raw_transcript
+    source_id: tests/eval/corpus/note_raw_transcript.md
+    document_id: 6131b682-d4c2-5c9e-a78b-7d35067e0b12
+    expected:
+      ingest_state: active
+      probe_verdicts:
+        topical: pass
+        specific: pass
+    notes: "May need --no-verify if probe gate is too strict on small corpus; see Phase D README"
+
+  - id: prestructured
+    source_id: tests/eval/corpus/note_prestructured.md
+    document_id: b39899a7-6a26-5ed7-a6d3-85c27a21119c
+    expected:
+      ingest_state: active
+      probe_verdicts:
+        topical: pass
+        specific: pass
+
+  - id: technical
+    source_id: tests/eval/corpus/note_technical.md
+    document_id: b37eb527-d616-50e8-97ed-ce0952062741
+    expected:
+      ingest_state: active
+      probe_verdicts:
+        topical: pass
+        specific: pass

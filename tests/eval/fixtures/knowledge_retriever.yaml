@@ -1,0 +1,60 @@
+schema_version: 1
+
+# Fixture schema: gold Q→document_id mappings for recall@k / MRR
+# See scripts/eval_retrieval.py for runner
+# document_ids are path-stable (stable source_id convention)
+# Note: eval uses document_id (path-stable), NOT point_id (content-hash-dependent)
+
+cases:
+  - id: recall_database_migration
+    query: "What was decided about the database migration strategy?"
+    query_type: recall
+    search_mode: hybrid
+    expected:
+      relevant_document_ids:
+        - 6131b682-d4c2-5c9e-a78b-7d35067e0b12  # note_raw_transcript
+      thresholds:
+        recall_at_1: 1.0
+        recall_at_3: 1.0
+        recall_at_5: 1.0
+        min_mrr: 0.9
+
+  - id: recall_vector_store
+    query: "Why was Qdrant chosen over Pinecone for the vector store?"
+    query_type: recall
+    search_mode: hybrid
+    expected:
+      relevant_document_ids:
+        - b39899a7-6a26-5ed7-a6d3-85c27a21119c  # note_prestructured
+      thresholds:
+        recall_at_1: 1.0
+        recall_at_3: 1.0
+        recall_at_5: 1.0
+        min_mrr: 0.9
+
+  - id: recall_rate_limiting
+    query: "How is API rate limiting implemented?"
+    query_type: recall
+    search_mode: hybrid
+    expected:
+      relevant_document_ids:
+        - b37eb527-d616-50e8-97ed-ce0952062741  # note_technical
+      thresholds:
+        recall_at_1: 1.0
+        recall_at_3: 1.0
+        recall_at_5: 1.0
+        min_mrr: 0.9
+
+  - id: lexscan_migration
+    query: "migration"
+    query_type: enumeration_content
+    search_mode: lexscan
+    expected:
+      min_hits: 2  # appears in note_raw_transcript and note_prestructured concepts
+
+  - id: lexscan_token_bucket
+    query: "token bucket"
+    query_type: enumeration_content
+    search_mode: lexscan
+    expected:
+      min_hits: 1  # appears in note_technical
