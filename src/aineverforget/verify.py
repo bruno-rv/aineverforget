@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from aineverforget.embedding import BGEM3Embedder
     from aineverforget.store import QdrantStore
 
-MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE = 3
 
 
 # ---------------------------------------------------------------------------
@@ -226,17 +225,17 @@ def run_probes(
     # Build the verification view filter once: active OR (doc_id=X, gen=G+1)
     view_filter = store.verification_view_filter(document_id, generation)
 
-    # Cold-start / near-empty detection: a dense search against a tiny corpus
-    # must return some nearest neighbors even for unrelated queries, so the
-    # negative probe is not meaningful until there are several unrelated docs.
+    # Cold-start detection: does any active Document other than ours exist?
+    # Since the current document is still pending, scroll() returns only active
+    # (competing) chunks. We defer the negative probe if there are fewer active
+    # chunks than probe.limit — with fewer competing chunks the pending document
+    # must occupy some top-K slots regardless of content quality.
     scroll_result = store.scroll()
     unrelated_active_docs = [
         d for d in scroll_result["documents"]
         if d["document_id"] != document_id
     ]
-    has_negative_background = (
-        len(unrelated_active_docs) >= MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE
-    )
+    unrelated_active_chunk_count = scroll_result["chunk_count"]
 
     probe_results: list[ProbeResult] = []
     negative_deferred = False
@@ -253,21 +252,26 @@ def run_probes(
             probe_results.append(result)
 
         elif probe.probe_type == ProbeType.negative:
-            if not has_negative_background:
-                # Cold-start / near-empty corpus: defer the negative probe.
+            corpus_too_small = (
+                len(unrelated_active_docs) == 0
+                or unrelated_active_chunk_count < probe.limit
+            )
+            if corpus_too_small:
+                # Cold-start or under-populated corpus: defer the negative probe.
+                # With fewer active chunks than probe.limit the pending document
+                # fills top-K slots by construction, making the probe meaningless.
                 negative_deferred = True
+                deferred_reason = (
+                    "no unrelated active Documents exist yet (cold-start)"
+                    if len(unrelated_active_docs) == 0
+                    else f"only {unrelated_active_chunk_count} active chunks < limit={probe.limit} (corpus too small)"
+                )
                 deferred_result = ProbeResult(
                     probe=probe,
                     passed=True,
                     deferred=True,
                     matched_chunk_ids=[],
-                    detail=(
-                        "negative probe DEFERRED: insufficient unrelated active "
-                        f"Documents for a meaningful negative probe "
-                        f"({len(unrelated_active_docs)} found, need "
-                        f"{MIN_UNRELATED_ACTIVE_DOCS_FOR_NEGATIVE}). "
-                        "Topical/specific still apply."
-                    ),
+                    detail=f"negative probe DEFERRED: {deferred_reason}. Topical/specific still apply.",
                 )
                 probe_results.append(deferred_result)
             else:

@@ -175,7 +175,7 @@ MatchAny([]) , and more.
 9-angle adversarial review (5 parallel finders + 1 sweep) of Phase E:
 `src/aineverforget/run_journal.py`, `scripts/run_journal.py`,
 `.claude/skills/ask/SKILL.md`, `.claude/skills/ingest/SKILL.md`, `src/aineverforget/cli.py`.
-**15 findings. Status: NEEDS FIXES. Fix handoff → CODEX-FIXLIST-PHASE-E.md.**
+**15 findings. Status: P0+P1 FIXES APPLIED (commit e580de1). P2 deferred (F13, F15). Fix handoff → CODEX-FIXLIST-PHASE-E.md.**
 
 **Critical:**
 1. Base64 regex `[A-Za-z0-9+/]{40,}` mangles source file paths (`/` in charset).

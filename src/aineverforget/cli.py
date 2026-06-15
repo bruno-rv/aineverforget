@@ -460,7 +460,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             ))
         probes.append(Probe(
             probe_type=ProbeType.negative,
-            query="xyzzy_nonexistent_term_for_negative_probe_aineverforget",
+            query="zxqjvf_wbhkm_plxnq_gjrtv_dfwck",
             limit=settings.verify_negative_limit,
         ))
 

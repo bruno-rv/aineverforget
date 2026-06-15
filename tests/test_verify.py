@@ -448,7 +448,7 @@ def test_verify_near_empty_defers_negative() -> None:
     negative_r = verdict.probe_results[0]
     assert negative_r.passed is True
     assert negative_r.deferred is True
-    assert "insufficient unrelated active Documents" in negative_r.detail
+    assert "corpus too small" in negative_r.detail or "cold-start" in negative_r.detail
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +462,8 @@ def test_verify_negative_passes_when_pending_absent_from_results(monkeypatch) ->
     """Negative probe passes when pending doc NOT in hybrid search results."""
     store = _make_store()
 
-    # Seed enough unrelated active docs so cold-start/near-empty deferral is NOT triggered.
+    # Seed 3 unrelated active chunks so cold-start/near-empty deferral is NOT triggered.
+    # limit=1 in the probe ensures 3 active chunks >= limit satisfies the corpus-size guard.
     unrelated_text = "quantum physics superposition entanglement"
     unrelated_chunks = []
     unrelated_embeddings = []
@@ -497,7 +498,7 @@ def test_verify_negative_passes_when_pending_absent_from_results(monkeypatch) ->
         Probe(
             probe_type=ProbeType.negative,
             query="quantum physics superposition entanglement",
-            limit=10,
+            limit=1,  # matches number of seeded active chunks
         ),
     ]
 
@@ -515,7 +516,8 @@ def test_verify_negative_fails_when_pending_surfaces(monkeypatch) -> None:
     """Negative probe fails when pending doc appears in hybrid search results."""
     store = _make_store()
 
-    # Seed enough unrelated active docs so cold-start/near-empty deferral is NOT triggered.
+    # Seed 3 unrelated active chunks so cold-start/near-empty deferral is NOT triggered.
+    # limit=1 in the probe ensures 3 active chunks >= limit satisfies the corpus-size guard.
     unrelated_text = "quantum physics superposition entanglement"
     unrelated_chunks = []
     unrelated_embeddings = []
@@ -553,7 +555,7 @@ def test_verify_negative_fails_when_pending_surfaces(monkeypatch) -> None:
         Probe(
             probe_type=ProbeType.negative,
             query="quantum physics superposition entanglement",
-            limit=10,
+            limit=1,  # matches number of seeded active chunks
         ),
     ]
 

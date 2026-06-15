@@ -257,16 +257,9 @@ def ingest_paths(
         If a live concurrent ingest is running (from ``run_lock``).  The CLI
         converts this to exit code 3.
     """
-    # Fix #1: fail-closed by default — require probes or explicit opt-out
-    if probes is None and require_verify:
-        raise ValueError(
-            "ingest_paths: probes=None without require_verify=False is not allowed. "
-            "Promotion without verification is fail-closed by default. "
-            "Options:\n"
-            "  - Supply verification probes (knowledge-indexer agent).\n"
-            "  - Pass require_verify=False (programmatic trusted/bulk ingest).\n"
-            "  - Use 'aineverforget ingest --no-verify' (CLI trusted ingest)."
-        )
+    # When require_verify=True and no probes supplied, auto-derive per-document
+    # from chunk content (same algorithm as cmd_verify). This is the normal CLI
+    # path; explicit probes override auto-derivation for programmatic callers.
     # Lazy imports — keep module-level clean
     from aineverforget import chunking, identity
     from aineverforget.config import load_settings
@@ -324,6 +317,7 @@ def ingest_paths(
                 store=store,
                 embedder=embedder,
                 probes=probes,
+                require_verify=require_verify,
                 tags=_tags,
                 identity_mod=identity,
                 chunking_mod=chunking,
@@ -364,6 +358,7 @@ def _ingest_one_path(
     store: object,
     embedder: object,
     probes: object,
+    require_verify: bool,
     tags: list[str],
     identity_mod: object,
     chunking_mod: object,
@@ -472,6 +467,7 @@ def _ingest_one_path(
                 store=store,
                 embedder=embedder,
                 probes=probes,
+                require_verify=require_verify,
                 tags=tags,
                 settings=settings,
                 identity_mod=identity_mod,
@@ -544,6 +540,56 @@ def _ingest_one_path(
 # ---------------------------------------------------------------------------
 
 
+_STOPWORDS = frozenset({
+    "about", "after", "again", "also", "another", "because", "before",
+    "between", "could", "every", "first", "from", "have", "here", "into",
+    "more", "most", "other", "over", "same", "should", "some", "such",
+    "than", "that", "their", "them", "then", "there", "these", "they",
+    "this", "those", "through", "under", "very", "what", "when", "where",
+    "which", "while", "with", "would", "your",
+})
+
+
+def _derive_probes_from_chunks(chunks: list, verify_mod: object) -> list:
+    """Auto-derive verification probes from pending chunks.
+
+    Mirrors the probe derivation in cmd_verify so that `aineverforget ingest`
+    (without explicit probes) produces the same probe set as a subsequent
+    `aineverforget verify` call.
+    """
+    Probe = verify_mod.Probe  # type: ignore[attr-defined]
+    ProbeType = verify_mod.ProbeType  # type: ignore[attr-defined]
+
+    first_chunk = chunks[0] if chunks else None
+    title = (first_chunk.title if first_chunk and hasattr(first_chunk, "title") else "") or ""
+    text0 = (first_chunk.text if first_chunk and hasattr(first_chunk, "text") else "") or ""
+    topical_query = title.strip() if title.strip() else " ".join(text0.split()[:10])
+
+    specific_word: str | None = None
+    for chunk in chunks:
+        text = (chunk.text if hasattr(chunk, "text") else "") or ""
+        for word in text.split():
+            w = word.strip(".,;:!?\"'()[]{}").lower()
+            if len(w) >= 5 and w not in _STOPWORDS and w.isalpha():
+                specific_word = word.strip(".,;:!?\"'()[]{}]")
+                break
+        if specific_word:
+            break
+
+    probes: list = [Probe(probe_type=ProbeType.topical, query=topical_query)]
+    if specific_word:
+        probes.append(Probe(
+            probe_type=ProbeType.specific,
+            query=specific_word,
+            expected_substring=specific_word,
+        ))
+    probes.append(Probe(
+        probe_type=ProbeType.negative,
+        query="zxqjvf_wbhkm_plxnq_gjrtv_dfwck",
+    ))
+    return probes
+
+
 def _ingest_one_document(
     *,
     path: "Path",
@@ -552,6 +598,7 @@ def _ingest_one_document(
     store: object,
     embedder: object,
     probes: object,
+    require_verify: bool,
     tags: list[str],
     settings: object,
     identity_mod: object,
@@ -624,10 +671,16 @@ def _ingest_one_document(
     # Step 5: Upsert pending
     store.upsert_chunks(chunks, embeddings)
 
-    # Step 6: Verify (if probes supplied)
+    # Step 6: Verify — use explicit probes, auto-derive from chunks, or skip
     if probes is not None:
-        document_probes = probes(document) if callable(probes) else probes
-        verdict = verify_mod.run_probes(store, document_id, G1, document_probes, embedder)
+        _probes = probes(document) if callable(probes) else probes
+    elif require_verify:
+        _probes = _derive_probes_from_chunks(chunks, verify_mod)
+    else:
+        _probes = None  # --no-verify path
+
+    if _probes is not None:
+        verdict = verify_mod.run_probes(store, document_id, G1, _probes, embedder)
         verify_passed = verdict.passed
     else:
         verify_passed = True
