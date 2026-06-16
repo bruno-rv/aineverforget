@@ -697,3 +697,46 @@ class TestDocxLoaderVerdicts:
         p.write_bytes(b"this is not a zip or an ole file")
         with pytest.raises(ValueError, match="not a valid Office Open XML"):
             list(loader.load(p))
+
+
+# ===========================================================================
+# DocxLoader tests — robustness fixes (style_id headings, cell escaping,
+# header-only OLE read)
+# ===========================================================================
+
+
+class TestDocxHelpers:
+    def test_heading_hashes_localized_via_style_id(self):
+        from aineverforget.loaders.docx import _heading_hashes
+        assert _heading_hashes("Überschrift 1", "Heading1") == "#"
+        assert _heading_hashes("Titre 2", "Heading2") == "##"
+        assert _heading_hashes("Title", "Title") == "#"
+        assert _heading_hashes("Normal", "Normal") is None
+
+    def test_heading_hashes_clamps_to_six(self):
+        from aineverforget.loaders.docx import _heading_hashes
+        assert _heading_hashes("Heading 9", "Heading9") == "######"
+
+    def test_clean_cell_escapes_pipe_and_newline(self):
+        from aineverforget.loaders.docx import _clean_cell
+        assert _clean_cell("a|b") == "a\\|b"
+        assert _clean_cell("line1\nline2") == "line1 line2"
+        assert _clean_cell("  spaced  ") == "spaced"
+
+
+class TestDocxLoaderRobustness:
+    @pytest.fixture
+    def loader(self):
+        from aineverforget.loaders.docx import DocxLoader
+        return DocxLoader()
+
+    def test_table_cell_with_pipe_stays_one_row(self, loader, tmp_path: Path):
+        from docx import Document as DocxFile
+        d = DocxFile()
+        t = d.add_table(rows=1, cols=2)
+        t.cell(0, 0).text = "a|b"
+        t.cell(0, 1).text = "c"
+        p = tmp_path / "pipe.docx"
+        d.save(str(p))
+        doc = list(loader.load(p))[0]
+        assert "| a\\|b | c |" in doc.raw_text

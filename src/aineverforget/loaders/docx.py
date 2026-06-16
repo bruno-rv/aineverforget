@@ -13,6 +13,7 @@ No heavy imports at module level; python-docx is imported lazily in ``load()``.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -31,20 +32,35 @@ LOW_TEXT_THRESHOLD: int = 20
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 
-def _para_to_markdown(style_name: str, text: str) -> str:
-    """Convert one paragraph (style name + text) to a markdown line."""
+_HEADING_RE = re.compile(r"Heading\s*([1-9])$")
+
+
+def _heading_hashes(style_name: str, style_id: str) -> str | None:
+    """Markdown hash prefix for a heading/title paragraph style, else None.
+
+    Checks the language-neutral ``style_id`` (e.g. ``"Heading1"``, ``"Title"``)
+    first, then the localizable ``style_name`` (e.g. ``"Heading 1"``), so
+    non-English Word documents are handled.
+    """
+    sid = (style_id or "").strip()
+    name = (style_name or "").strip()
+    if sid == "Title" or name == "Title":
+        return "#"
+    for source in (sid, name):
+        m = _HEADING_RE.match(source)
+        if m:
+            level = max(1, min(int(m.group(1)), 6))
+            return "#" * level
+    return None
+
+
+def _para_to_markdown(style_name: str, style_id: str, text: str) -> str:
+    """Convert one paragraph (style + text) to a markdown line."""
     if not text:
         return ""
-    name = (style_name or "").strip()
-    if name == "Title":
-        return f"# {text}"
-    if name.startswith("Heading"):
-        try:
-            level = int(name.split()[-1])
-        except (ValueError, IndexError):
-            level = 2
-        level = max(1, min(level, 6))
-        return f"{'#' * level} {text}"
+    hashes = _heading_hashes(style_name, style_id)
+    if hashes:
+        return f"{hashes} {text}"
     return text
 
 
@@ -62,6 +78,11 @@ def _table_to_markdown(rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _clean_cell(text: str) -> str:
+    """Sanitize a table cell for inline markdown: drop newlines, escape pipes."""
+    return text.replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip()
+
+
 class DocxLoader:
     """Loader for ``.docx`` Source files. Registered as ``"docx"``."""
 
@@ -74,8 +95,11 @@ class DocxLoader:
         document_id = make_document_id(source_id, document_path)
 
         # Encrypted detection BEFORE python-docx (which cannot distinguish
-        # encrypted from corrupt — both raise PackageNotFoundError).
-        if path.read_bytes()[:8].startswith(_OLE_MAGIC):
+        # encrypted from corrupt — both raise PackageNotFoundError).  Read only
+        # the header rather than loading the whole file into memory.
+        with path.open("rb") as _fh:
+            _head = _fh.read(8)
+        if _head.startswith(_OLE_MAGIC):
             yield Document(
                 source_id=source_id,
                 source_type="docx",
@@ -110,14 +134,17 @@ class DocxLoader:
             tag = child.tag
             if tag.endswith("}p"):
                 para = Paragraph(child, docx_doc)
-                style_name = para.style.name if para.style is not None else ""
-                md = _para_to_markdown(style_name, para.text.strip())
+                style = para.style
+                style_name = style.name if style is not None else ""
+                style_id = style.style_id if style is not None else ""
+                md = _para_to_markdown(style_name, style_id, para.text.strip())
                 if md:
                     blocks.append(md)
             elif tag.endswith("}tbl"):
                 table = Table(child, docx_doc)
                 rows = [
-                    [cell.text.strip() for cell in row.cells] for row in table.rows
+                    [_clean_cell(cell.text) for cell in row.cells]
+                    for row in table.rows
                 ]
                 md = _table_to_markdown(rows)
                 if md:
