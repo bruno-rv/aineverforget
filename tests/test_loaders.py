@@ -600,3 +600,66 @@ class TestLoaderConstants:
 
     def test_low_confidence_ratio_in_range(self):
         assert 0.0 < LOW_CONFIDENCE_CHAR_RATIO < 1.0
+
+
+# ===========================================================================
+# DocxLoader tests — Task 4: happy path
+# ===========================================================================
+
+
+class TestDocxLoader:
+    @pytest.fixture
+    def loader(self):
+        from aineverforget.loaders.docx import DocxLoader
+        return DocxLoader()
+
+    @pytest.fixture
+    def docx_file(self, tmp_path: Path) -> Path:
+        from docx import Document as DocxFile
+        d = DocxFile()
+        d.add_heading("Weekly Sync", level=1)
+        d.add_paragraph("We discussed the roadmap.")
+        d.add_heading("Decisions", level=2)
+        t = d.add_table(rows=2, cols=2)
+        t.cell(0, 0).text = "Item"
+        t.cell(0, 1).text = "Owner"
+        t.cell(1, 0).text = "Ship docx loader"
+        t.cell(1, 1).text = "Bruno"
+        p = tmp_path / "sync.docx"
+        d.save(str(p))
+        return p
+
+    def test_returns_one_document(self, loader, docx_file: Path):
+        docs = list(loader.load(docx_file))
+        assert len(docs) == 1
+
+    def test_source_type_is_docx(self, loader, docx_file: Path):
+        doc = list(loader.load(docx_file))[0]
+        assert doc.source_type == "docx"
+
+    def test_headings_become_markdown(self, loader, docx_file: Path):
+        doc = list(loader.load(docx_file))[0]
+        assert "# Weekly Sync" in doc.raw_text
+        assert "## Decisions" in doc.raw_text
+
+    def test_table_becomes_pipe_table(self, loader, docx_file: Path):
+        doc = list(loader.load(docx_file))[0]
+        assert "| Item | Owner |" in doc.raw_text
+        assert "| --- | --- |" in doc.raw_text
+        assert "| Ship docx loader | Bruno |" in doc.raw_text
+
+    def test_verdict_ok(self, loader, docx_file: Path):
+        doc = list(loader.load(docx_file))[0]
+        assert doc.meta["loader_verdict"] == "ok"
+
+    def test_identity_fields(self, loader, docx_file: Path):
+        doc = list(loader.load(docx_file))[0]
+        assert doc.source_id == str(docx_file.resolve())
+        assert doc.document_path == doc.source_id
+        assert doc.document_id == make_document_id(doc.source_id, doc.document_path)
+        assert doc.document_sha256 == sha256_text(doc.raw_text)
+
+    def test_registered_in_registry(self, docx_file: Path):
+        import aineverforget.loaders.docx  # noqa: F401
+        assert "docx" in registered_source_types()
+        assert get_loader("docx") is not None
