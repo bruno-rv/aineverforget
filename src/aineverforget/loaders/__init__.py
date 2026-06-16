@@ -250,7 +250,10 @@ def resolve_source(path: Path) -> tuple[str, bool]:
         return infer_source_type(path), False
     except ValueError:
         pass
-    prefix = path.read_bytes()[:_SNIFF_PREFIX_BYTES]
+    # Read only the header, not the whole file — an unknown-extension path may
+    # be a large binary (video, db dump); we only need the prefix to sniff it.
+    with path.open("rb") as fh:
+        prefix = fh.read(_SNIFF_PREFIX_BYTES)
     if _looks_like_text(prefix):
         return "markdown", True
     raise ValueError(
