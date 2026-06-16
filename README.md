@@ -14,6 +14,8 @@ chunks.
 - Agent and skill specifications under `.codex/` and `.claude/`
 - Deterministic eval fixtures and scripts under `tests/eval/` and `scripts/`
 - Pinned development dependency lockfile: `requirements-dev.lock`
+- Python version hint: `.python-version`
+- Docker Compose service for local Qdrant: `docker-compose.yml`
 
 The repository does not vendor Python wheels, the BGE-M3 model files, Docker, or
 a Qdrant database. A fresh machine still needs Python, package index access, and
@@ -26,8 +28,8 @@ a running Qdrant service for real ingest and search.
 - Network access to PyPI or your corporate Python package mirror.
 - Network or local model-cache access for the first real `FlagEmbedding`
   BGE-M3 model load.
-- Docker, or another way to run Qdrant, for real ingest/search and the live
-  retrieval eval.
+- Docker Compose, or another way to run Qdrant, for real ingest/search and the
+  live retrieval eval.
 
 ## Fresh clone setup
 
@@ -37,7 +39,7 @@ Clone the repository and install the pinned dependencies:
 git clone https://github.com/bruno-rv/aineverforget.git
 cd aineverforget
 
-PYTHON=python3.12  # or any Python 3.11+ interpreter
+PYTHON=python3.12  # matches .python-version; any Python 3.11+ works
 $PYTHON -m venv .venv
 source .venv/bin/activate
 
@@ -67,10 +69,24 @@ aineverforget --help
 Start Qdrant before running real ingest, search, or the live retrieval eval:
 
 ```bash
-docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+docker compose up -d qdrant
 ```
 
 The default runtime configuration expects Qdrant at `http://127.0.0.1:6333`.
+
+To stop Qdrant:
+
+```bash
+docker compose down
+```
+
+The Compose file pins `qdrant/qdrant:v1.18.2` by default (matches the
+`qdrant-client` version in the lockfile). To use a different server image
+without editing the file:
+
+```bash
+QDRANT_VERSION=<tag> docker compose up -d qdrant
+```
 
 ## Basic CLI usage
 
