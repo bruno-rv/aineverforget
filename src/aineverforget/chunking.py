@@ -97,7 +97,7 @@ def chunk_document(
 
     resolved_producer = producer or document.producer
 
-    if document.source_type == "markdown":
+    if document.source_type in ("markdown", "docx"):
         return _chunk_markdown(
             document,
             settings,
