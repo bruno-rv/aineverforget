@@ -210,3 +210,25 @@ def infer_source_type(path: Path) -> str:
         f"Cannot infer source_type for extension {suffix!r} (path={path}). "
         "Pass --source-type explicitly."
     )
+
+
+# Bytes that are legitimate in text files even though they are control codes.
+_ALLOWED_CONTROL_BYTES: frozenset[int] = frozenset({0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x1B})
+_BINARY_CONTROL_RATIO: float = 0.30
+
+
+def _looks_like_text(data: bytes) -> bool:
+    """Heuristic: does *data* (a byte prefix) look like a text file?
+
+    Returns False if a NUL byte is present or the ratio of non-text control
+    bytes exceeds ``_BINARY_CONTROL_RATIO``.  Used to decide whether an
+    unknown-extension Source is safe to ingest as text.
+    """
+    if not data:
+        return True
+    if b"\x00" in data:
+        return False
+    nontext = sum(
+        1 for b in data if b < 0x20 and b not in _ALLOWED_CONTROL_BYTES
+    )
+    return (nontext / len(data)) <= _BINARY_CONTROL_RATIO

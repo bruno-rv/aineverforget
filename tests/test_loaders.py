@@ -31,7 +31,7 @@ from aineverforget.loaders.pdf import (
     LOADER_VERSION as PDF_LOADER_VERSION,
     PDFLoader,
 )
-from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type, registered_source_types
+from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type, _looks_like_text, registered_source_types
 from aineverforget.identity import make_document_id, sha256_text
 from aineverforget.models import Document
 
@@ -549,6 +549,20 @@ class TestInferSourceType:
     def test_unknown_extension_still_raises(self, tmp_path: Path):
         with pytest.raises(ValueError):
             infer_source_type(tmp_path / "n.weirdext")
+
+
+class TestLooksLikeText:
+    def test_plain_utf8_is_text(self):
+        assert _looks_like_text("# Notes\n\nhello world\n".encode("utf-8")) is True
+
+    def test_empty_is_text(self):
+        assert _looks_like_text(b"") is True
+
+    def test_nul_byte_is_binary(self):
+        assert _looks_like_text(b"PK\x03\x04\x00\x00rubbish") is False
+
+    def test_high_control_ratio_is_binary(self):
+        assert _looks_like_text(bytes(range(1, 9)) * 20) is False
 
 
 class TestLoaderConstants:
