@@ -232,3 +232,28 @@ def _looks_like_text(data: bytes) -> bool:
         1 for b in data if b < 0x20 and b not in _ALLOWED_CONTROL_BYTES
     )
     return (nontext / len(data)) <= _BINARY_CONTROL_RATIO
+
+
+_SNIFF_PREFIX_BYTES: int = 8192
+
+
+def resolve_source(path: Path) -> tuple[str, bool]:
+    """Resolve a Source path to ``(source_type, sniffed_unknown)``.
+
+    Known extensions resolve via :func:`infer_source_type` with
+    ``sniffed_unknown=False``.  Unknown extensions are byte-sniffed: text-like
+    content resolves to ``("markdown", True)`` so it ingests as text (the
+    caller downgrades the loader verdict to ``low_confidence``); binary content
+    raises ``ValueError`` so the ingest fails closed rather than storing garbage.
+    """
+    try:
+        return infer_source_type(path), False
+    except ValueError:
+        pass
+    prefix = path.read_bytes()[:_SNIFF_PREFIX_BYTES]
+    if _looks_like_text(prefix):
+        return "markdown", True
+    raise ValueError(
+        f"Cannot ingest {path}: unrecognized extension and the content looks "
+        "binary. Pass --source-type explicitly to override."
+    )

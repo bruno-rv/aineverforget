@@ -31,7 +31,7 @@ from aineverforget.loaders.pdf import (
     LOADER_VERSION as PDF_LOADER_VERSION,
     PDFLoader,
 )
-from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type, _looks_like_text, registered_source_types
+from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type, _looks_like_text, resolve_source, registered_source_types
 from aineverforget.identity import make_document_id, sha256_text
 from aineverforget.models import Document
 
@@ -563,6 +563,29 @@ class TestLooksLikeText:
 
     def test_high_control_ratio_is_binary(self):
         assert _looks_like_text(bytes(range(1, 9)) * 20) is False
+
+
+class TestResolveSource:
+    def test_known_docx(self, tmp_path: Path):
+        p = tmp_path / "s.docx"
+        p.write_bytes(b"PK\x03\x04stub")
+        assert resolve_source(p) == ("docx", False)
+
+    def test_known_markdown(self, tmp_path: Path):
+        p = tmp_path / "s.md"
+        p.write_text("# hi", encoding="utf-8")
+        assert resolve_source(p) == ("markdown", False)
+
+    def test_unknown_text_sniffs_to_markdown(self, tmp_path: Path):
+        p = tmp_path / "notes.org"
+        p.write_text("* Org heading\nplain notes\n", encoding="utf-8")
+        assert resolve_source(p) == ("markdown", True)
+
+    def test_unknown_binary_raises(self, tmp_path: Path):
+        p = tmp_path / "blob.bin"
+        p.write_bytes(b"\x00\x01\x02\x03binarygarbage")
+        with pytest.raises(ValueError, match="binary"):
+            resolve_source(p)
 
 
 class TestLoaderConstants:
