@@ -110,6 +110,7 @@ lxml==6.0.4
     # via
     #   inscriptis
     #   ir-datasets
+    #   python-docx
 lz4==4.4.5
     # via ir-datasets
 markdown-it-py==4.2.0
@@ -207,6 +208,8 @@ pytest-asyncio==0.26.0
     # via aineverforget (pyproject.toml)
 python-dateutil==2.9.0.post0
     # via pandas
+python-docx==1.2.0
+    # via aineverforget (pyproject.toml)
 pyyaml==6.0.3
     # via
     #   aineverforget (pyproject.toml)
@@ -291,6 +294,7 @@ typing-extensions==4.15.0
     #   huggingface-hub
     #   pydantic
     #   pydantic-core
+    #   python-docx
     #   sentence-transformers
     #   torch
     #   typing-inspection
