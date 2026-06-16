@@ -36,7 +36,9 @@ For each path in *paths*:
        — all Chunks land with ``ingest_state=pending``.
 
     6. **Verify**: call ``verify.run_probes(store, document_id, G+1, probes, embedder)``
-       using hybrid retrieval + the verification view (``store.verification_view_filter``).
+       using explicit probes when supplied, otherwise auto-derived probes when
+       ``require_verify=True``. Verification uses hybrid retrieval + the
+       verification view (``store.verification_view_filter``).
 
     7a. **Pass** → call ``store.promote_generation(document_id, G+1)`` to
         promote pending → active.  Then call
@@ -228,17 +230,17 @@ def ingest_paths(
     embedder:
         BGE-M3 embedder.  If ``None``, creates a ``BGEM3Embedder`` from *settings*.
     probes:
-        Verification probes.  If ``None`` AND ``require_verify=True`` (the
-        default), the call raises ``ValueError`` — the CLI fail-closed contract
-        prevents accidental unverified promotion.  Pass ``require_verify=False``
-        (via ``--no-verify`` CLI flag) for explicit trusted/bulk ingest without
-        probes.  The CLI supplies a per-document probe factory for the
+        Verification probes or a per-document probe factory. If ``None`` and
+        ``require_verify=True`` (the default), probes are auto-derived from the
+        pending chunks before promotion. Pass ``require_verify=False`` (via the
+        ``--no-verify`` CLI flag) for explicit trusted/bulk ingest without
+        probes. The CLI normally supplies a per-document probe factory for the
         knowledge-indexer agent workflow.
     require_verify:
-        If ``True`` (default) AND ``probes is None``, raise ``ValueError`` to
-        prevent silent unverified promotion.  Set to ``False`` only when the
-        caller explicitly opts out of verification (e.g. ``--no-verify`` flag
-        or programmatic bulk migration).
+        If ``True`` (default), verify with explicit probes or auto-derived
+        probes before promotion. Set to ``False`` only when the caller
+        explicitly opts out of verification (e.g. ``--no-verify`` flag or
+        programmatic bulk migration).
     run_dir:
         Directory for the ingest lock file (default ``Path("runs")``).
     session_id:
@@ -251,8 +253,6 @@ def ingest_paths(
 
     Raises
     ------
-    ValueError
-        If ``probes is None`` and ``require_verify=True`` (fail-closed contract).
     IngestLockOverlapError
         If a live concurrent ingest is running (from ``run_lock``).  The CLI
         converts this to exit code 3.

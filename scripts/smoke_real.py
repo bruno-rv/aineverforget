@@ -161,19 +161,31 @@ def main() -> int:
           st2.get("document_count") == 1,
           f"document_count={st2.get('document_count')} active_chunk_count={st2.get('active_chunk_count')}")
 
-    # ---- Finding #1: bare ingest (probes=None) is fail-closed ------------
-    # The CLI `aineverforget ingest` without --no-verify maps to require_verify=True;
-    # probes=None there MUST raise rather than silently promote unverified.
-    print("\n# Finding #1 bare ingest does NOT promote unverified (fail-closed)...", flush=True)
-    raised = False
-    try:
-        ingest_paths([md], settings=settings, store=store, embedder=embedder, probes=None)
-    except ValueError:
-        raised = True
-    except Exception:
-        raised = False
-    check("bare ingest (probes=None, require_verify default) raises ValueError", raised,
-          "fail-closed contract prevents silent unverified promotion")
+    # ---- Finding #1: bare ingest auto-derives probes ----------------------
+    # The CLI `aineverforget ingest` without --no-verify supplies a probe
+    # factory. Programmatic callers with probes=None and require_verify=True
+    # auto-derive probes from pending chunks before promotion.
+    print("\n# Finding #1 bare ingest auto-derives probes before promotion...", flush=True)
+    md.write_text(
+        "# Nota sobre Curseduca\n\n"
+        "## Contexto\n"
+        "A plataforma Curseduca hospeda aulas de engenharia de dados. "
+        "O termo distintivo aqui continua sendo Marmota para testar o full-text lexscan.\n\n"
+        "## Decisão\n"
+        "Usamos Qdrant com vetores densos e esparsos e fusão RRF. "
+        "Esta atualização força uma nova geração verificada.\n",
+        encoding="utf-8",
+    )
+    auto_report = ingest_paths([md], settings=settings, store=store, embedder=embedder, probes=None)
+    auto_result = auto_report.results[0] if auto_report.results else None
+    auto_ok = (
+        auto_result is not None
+        and str(auto_result.outcome).endswith("success")
+        and store.max_active_generation(doc2.document_id) == g2 + 1
+    )
+    check("probes=None + require_verify auto-derives and promotes verified gen", auto_ok,
+          f"outcome={getattr(auto_result, 'outcome', None)} "
+          f"max_gen={store.max_active_generation(doc2.document_id)} expected={g2 + 1}")
 
     gc = store.gc()
     check("gc runs clean", isinstance(gc, dict), str(gc))
