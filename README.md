@@ -1,8 +1,8 @@
 # aineverforget
 
 aineverforget is a local-first, eval-gated personal knowledge base. It ingests
-Markdown, text, and PDF sources into Qdrant, then searches the indexed corpus
-with BGE-M3 dense and sparse embeddings.
+Markdown, text, PDF, and Word (`.docx`) sources into Qdrant, then searches the
+indexed corpus with BGE-M3 dense and sparse embeddings.
 
 Use it when you want meeting notes, transcripts, project notes, or generated
 summaries to become searchable local memory with citations back to the source
@@ -102,6 +102,12 @@ Ingest one or more source files:
 ```bash
 aineverforget ingest notes/meeting.md --tag meeting --producer user
 ```
+
+Accepted file types: `.md`, `.txt`, `.markdown`, `.rst`, `.text`, `.pdf`, and
+`.docx`. A `.docx` is reconstructed to markdown (headings, tables, paragraphs)
+and indexed directly. A file with any other extension is byte-sniffed: text-like
+content is ingested as markdown (flagged `low_confidence`), while binary content
+is rejected with a clear error. Use `--source-type` to force a specific type.
 
 Use `--source-id` when you need a stable logical identifier across machines:
 

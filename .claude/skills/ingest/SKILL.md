@@ -68,6 +68,7 @@ For each validated path, determine dispatch mode before invoking any agent.
 
 **Pre-structured → skip note-summarizer:**
 - Path ends in `.pdf` → **direct** (knowledge-indexer only).
+- Path ends in `.docx` → **direct** (knowledge-indexer only; the loader reconstructs markdown from the Word document).
 - Path basename is `summary.md` → **direct**.
 - Path ends in `.md` or `.txt` and contains both `## TL;DR` and `## Key Concepts` → **direct**.
 - Path ends in `.md` or `.txt` → run:
@@ -75,6 +76,7 @@ For each validated path, determine dispatch mode before invoking any agent.
   grep -cE "^## " "<path>"
   ```
   Count ≥ 3 → **direct**. Count < 3 → **raw note**.
+- Path ends in any other extension → **direct**. The CLI byte-sniffs it: text-like content is indexed as markdown (flagged `low_confidence`); binary content is rejected (`IngestOutcome.error`). Pass `--source-type` to override.
 
 **Raw note/transcript → needs summarization:**
 - `.md` / `.txt` file where the section count < 3 and it is not a generated summary → dispatch note-summarizer first.
