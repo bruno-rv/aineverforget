@@ -287,7 +287,9 @@ def ingest_paths(
 
     if embedder is None:
         from aineverforget.embedding import BGEM3Embedder
-        embedder = BGEM3Embedder(model_name=settings.embed_model)
+        embedder = BGEM3Embedder(
+            model_name=settings.embed_model, revision=settings.embed_revision
+        )
 
     if session_id is None:
         session_id = str(uuid.uuid4())

@@ -235,7 +235,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         from aineverforget.store import QdrantStore
 
         settings = load_settings()
-        embedder = BGEM3Embedder(model_name=settings.embed_model)
+        embedder = BGEM3Embedder(model_name=settings.embed_model, revision=settings.embed_revision)
         store = QdrantStore(
             url=settings.qdrant_url,
             collection_name=settings.collection,
@@ -401,7 +401,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         from aineverforget.verify import Probe, ProbeType, run_probes
 
         settings = load_settings()
-        embedder = BGEM3Embedder(model_name=settings.embed_model)
+        embedder = BGEM3Embedder(model_name=settings.embed_model, revision=settings.embed_revision)
         store = QdrantStore(
             url=settings.qdrant_url,
             collection_name=settings.collection,

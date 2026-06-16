@@ -133,10 +133,12 @@ class BGEM3Embedder:
         *,
         use_fp16: bool = True,
         batch_size: int = 32,
+        revision: str | None = None,
     ) -> None:
         self.model_name = model_name
         self.use_fp16 = use_fp16
         self.batch_size = batch_size
+        self.revision = revision
         self._model: object | None = None  # loaded lazily
 
     def encode_passages(self, texts: list[str]) -> list[PassageEmbedding]:
@@ -258,7 +260,7 @@ class BGEM3Embedder:
                 "FlagEmbedding is not installed. "
                 "Install it with: pip install FlagEmbedding"
             ) from exc
-        self._model = BGEM3FlagModel(self.model_name, use_fp16=self.use_fp16)
+        self._model = BGEM3FlagModel(self.model_name, use_fp16=self.use_fp16, revision=self.revision)
         return self._model
 
     @staticmethod

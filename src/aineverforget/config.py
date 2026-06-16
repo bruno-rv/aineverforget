@@ -66,6 +66,15 @@ class Settings(BaseModel):
             "No instruction prefix — follows BGE-M3 model card."
         ),
     )
+    embed_revision: str = Field(
+        default="5617a9f61b028005a4858fdac845db406aefb181",
+        description=(
+            "Pinned HuggingFace commit revision of BAAI/bge-m3.  A fresh clone will "
+            "fetch the exact checkpoint that backs the indexed collection, preventing "
+            "silent embedding drift if the HF `main` weights change.  "
+            "Override via AINF_EMBED_REVISION to adopt a new checkpoint deliberately."
+        ),
+    )
     embed_dim: int = Field(
         default=1024,
         description="Dense vector dimensionality.  Must match the deployed embedder checkpoint.",
@@ -133,6 +142,12 @@ def load_settings(**overrides: object) -> Settings:
         collection=str(overrides.get("collection", _env("collection", "ainf_corpus_bgem3_v1"))),
         qdrant_url=str(overrides.get("qdrant_url", _env("qdrant_url", "http://127.0.0.1:6333"))),
         embed_model=str(overrides.get("embed_model", _env("embed_model", "BAAI/bge-m3"))),
+        embed_revision=str(
+            overrides.get(
+                "embed_revision",
+                _env("embed_revision", "5617a9f61b028005a4858fdac845db406aefb181"),
+            )
+        ),
         embed_dim=int(overrides.get("embed_dim", _env_int("embed_dim", 1024))),
         chunk_word_window=int(overrides.get("chunk_word_window", _env_int("chunk_word_window", 220))),
         chunk_word_overlap=int(overrides.get("chunk_word_overlap", _env_int("chunk_word_overlap", 40))),
