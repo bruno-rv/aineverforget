@@ -76,7 +76,7 @@ class TestRegistry:
 
     def test_unknown_source_type_raises(self):
         with pytest.raises(KeyError, match="No loader registered"):
-            get_loader("docx")
+            get_loader("weirdext")
 
 
 # ===========================================================================

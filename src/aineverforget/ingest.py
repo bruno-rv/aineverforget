@@ -263,7 +263,7 @@ def ingest_paths(
     # Lazy imports — keep module-level clean
     from aineverforget import chunking, identity
     from aineverforget.config import load_settings
-    from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type
+    from aineverforget.loaders import LoaderVerdict, get_loader, resolve_source
     from aineverforget.models import IngestState
     from aineverforget.run_lock import IngestLock
     from aineverforget import verify as verify_mod
@@ -272,6 +272,7 @@ def ingest_paths(
     # Each module registers itself into the global registry on import.
     import aineverforget.loaders.text  # noqa: F401
     import aineverforget.loaders.pdf   # noqa: F401
+    import aineverforget.loaders.docx  # noqa: F401
 
     # Resolve defaults
     if settings is None:
@@ -325,7 +326,7 @@ def ingest_paths(
                 chunking_mod=chunking,
                 verify_mod=verify_mod,
                 loaders_get_loader=get_loader,
-                loaders_infer_source_type=infer_source_type,
+                loaders_resolve_source=resolve_source,
                 LoaderVerdict=LoaderVerdict,
                 IngestState=IngestState,
             )
@@ -366,7 +367,7 @@ def _ingest_one_path(
     chunking_mod: object,
     verify_mod: object,
     loaders_get_loader: object,
-    loaders_infer_source_type: object,
+    loaders_resolve_source: object,
     LoaderVerdict: object,
     IngestState: object,
 ) -> PathIngestResult:
@@ -374,7 +375,7 @@ def _ingest_one_path(
     try:
         # Infer source type and get loader
         try:
-            source_type = loaders_infer_source_type(path)
+            source_type, sniffed_unknown = loaders_resolve_source(path)
         except ValueError as exc:
             return PathIngestResult(
                 path=path,
@@ -442,6 +443,11 @@ def _ingest_one_path(
             if hasattr(loader_verdict_val, "value")
             else str(loader_verdict_val) if loader_verdict_val else None
         )
+
+        # An unknown-extension file that was force-read as text is flagged so
+        # the CLI surfaces that it was ingested on a best-effort basis.
+        if sniffed_unknown and loader_verdict_str == "ok":
+            loader_verdict_str = "low_confidence"
 
         if loader_verdict_str in ("encrypted", "scanned"):
             return PathIngestResult(
