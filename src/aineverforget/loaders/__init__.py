@@ -202,6 +202,8 @@ def infer_source_type(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return "pdf"
+    if suffix == ".docx":
+        return "docx"
     if suffix in {".md", ".txt", ".markdown", ".rst", ".text"}:
         return "markdown"
     raise ValueError(

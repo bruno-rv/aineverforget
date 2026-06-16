@@ -31,7 +31,7 @@ from aineverforget.loaders.pdf import (
     LOADER_VERSION as PDF_LOADER_VERSION,
     PDFLoader,
 )
-from aineverforget.loaders import LoaderVerdict, get_loader, registered_source_types
+from aineverforget.loaders import LoaderVerdict, get_loader, infer_source_type, registered_source_types
 from aineverforget.identity import make_document_id, sha256_text
 from aineverforget.models import Document
 
@@ -535,6 +535,20 @@ class TestPDFLoaderFallback:
 # ===========================================================================
 # Loader constant sanity checks
 # ===========================================================================
+
+
+class TestInferSourceType:
+    def test_docx_extension_maps_to_docx(self, tmp_path: Path):
+        p = tmp_path / "summary.docx"
+        p.write_bytes(b"PK\x03\x04stub")
+        assert infer_source_type(p) == "docx"
+
+    def test_markdown_extension_unchanged(self, tmp_path: Path):
+        assert infer_source_type(tmp_path / "n.md") == "markdown"
+
+    def test_unknown_extension_still_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError):
+            infer_source_type(tmp_path / "n.weirdext")
 
 
 class TestLoaderConstants:
