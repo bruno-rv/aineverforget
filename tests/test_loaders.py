@@ -663,3 +663,37 @@ class TestDocxLoader:
         import aineverforget.loaders.docx  # noqa: F401
         assert "docx" in registered_source_types()
         assert get_loader("docx") is not None
+
+
+# ===========================================================================
+# DocxLoader tests — Task 5: verdicts (empty / encrypted / corrupt)
+# ===========================================================================
+
+
+class TestDocxLoaderVerdicts:
+    @pytest.fixture
+    def loader(self):
+        from aineverforget.loaders.docx import DocxLoader
+        return DocxLoader()
+
+    def test_near_empty_is_low_confidence(self, loader, tmp_path: Path):
+        from docx import Document as DocxFile
+        d = DocxFile()
+        d.add_paragraph("hi")
+        p = tmp_path / "empty.docx"
+        d.save(str(p))
+        doc = list(loader.load(p))[0]
+        assert doc.meta["loader_verdict"] == "low_confidence"
+
+    def test_ole_magic_is_encrypted(self, loader, tmp_path: Path):
+        p = tmp_path / "locked.docx"
+        p.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64)
+        doc = list(loader.load(p))[0]
+        assert doc.meta["loader_verdict"] == "encrypted"
+        assert doc.raw_text == ""
+
+    def test_corrupt_not_zip_raises(self, loader, tmp_path: Path):
+        p = tmp_path / "broken.docx"
+        p.write_bytes(b"this is not a zip or an ole file")
+        with pytest.raises(ValueError, match="not a valid Office Open XML"):
+            list(loader.load(p))
